@@ -58,6 +58,10 @@
   window.DR = window.DR || {};
   window.DR.sendEvent = sendEvent;
 
+  // ✅ COMPAT: certains scripts (blog/landing) appellent sendEvent(...) en global
+  // (avant GitHub, tu l’avais sûrement en global dans Webflow)
+  window.sendEvent = sendEvent;
+
   // ===== Helpers data-dr (multi actions) =====
   function getDataDrActions(el) {
     if (!el) return "";
@@ -333,3 +337,4 @@
     });
   });
 })();
+
