@@ -53,7 +53,90 @@
   window.DR = window.DR || {};
   window.DR.sendEvent = sendEvent;
 
-  // 0) Helpers referrer / campaign (pour session_start)
+  // ===== Helpers data-dr (multi actions) =====
+  function getDataDrActions(el) {
+    if (!el) return "";
+    const v = el.getAttribute("data-dr");
+    return v ? String(v) : "";
+  }
+  function hasAction(el, action) {
+    const actions = getDataDrActions(el);
+    return actions.includes(action);
+  }
+
+  // ===== Helpers origin (signup) =====
+  function storeSignupOrigin() {
+    const pageName =
+      document.body?.dataset?.page || document.title || window.location.pathname;
+    const pageType = document.body?.dataset?.type || "unknown";
+
+    sessionStorage.setItem("signup_origin_page_name", pageName);
+    sessionStorage.setItem("signup_origin_page_type", pageType);
+    sessionStorage.setItem("signup_origin_url", window.location.href);
+    sessionStorage.setItem("signup_origin_ts", String(Date.now()));
+  }
+
+  function getSignupOrigin() {
+    const originName =
+      sessionStorage.getItem("signup_origin_page_name") ||
+      document.body?.dataset?.page ||
+      document.title ||
+      window.location.pathname;
+
+    const originType =
+      sessionStorage.getItem("signup_origin_page_type") ||
+      document.body?.dataset?.type ||
+      "unknown";
+
+    const originUrl =
+      sessionStorage.getItem("signup_origin_url") || window.location.href;
+
+    const ts = parseInt(sessionStorage.getItem("signup_origin_ts") || "0", 10);
+    const ageMs = ts ? Date.now() - ts : null;
+
+    // Si l'origin date de +30 min, on considère que ce n’est plus fiable
+    if (ageMs !== null && ageMs > 30 * 60 * 1000) {
+      return {
+        page_name:
+          document.body?.dataset?.page ||
+          originName ||
+          document.title ||
+          window.location.pathname,
+        page_type: document.body?.dataset?.type || originType || "unknown",
+        url: window.location.href,
+      };
+    }
+
+    return { page_name: originName, page_type: originType, url: originUrl };
+  }
+
+  // ===== A) Click tracking: store origin + signup_intent =====
+  document.addEventListener("click", function (e) {
+    const el = e.target.closest("[data-dr]");
+    if (!el) return;
+
+    // 1) Si l'élément demande de stocker l'origine, on le fait
+    if (hasAction(el, "store_signup_origin")) {
+      storeSignupOrigin();
+      // IMPORTANT: pas de return (un même clic peut être aussi signup_intent)
+    }
+
+    // 2) Si l'élément est une intention d'inscription, on envoie l'event
+    if (hasAction(el, "signup_intent")) {
+      const origin = getSignupOrigin();
+
+      sendEvent({
+        type: "signup_intent",
+        url: origin.url,
+        metadata: {
+          page_name: origin.page_name,
+          page_type: origin.page_type,
+        },
+      });
+    }
+  });
+
+  // ===== Helpers referrer / campaign (pour session_start) =====
   function getCampaignSlug() {
     const params = new URLSearchParams(window.location.search);
     const c = params.get("c");
@@ -104,7 +187,7 @@
     const pageName = document.body?.dataset?.page || null;
     const pageType = document.body?.dataset?.type || null;
 
-    // ===== A) session_start (1 fois / session_id) =====
+    // ===== B) session_start (1 fois / session_id) =====
     try {
       let sessionId = null;
       try {
@@ -137,7 +220,7 @@
       // on ne casse jamais la page
     }
 
-    // ===== B) page_view + previous page name =====
+    // ===== C) page_view + previous page name =====
     const referrerName = sessionStorage.getItem("previous_page_name") || null;
     sessionStorage.setItem("previous_page_name", pageName);
 
@@ -157,7 +240,7 @@
       if (eventId) sessionStorage.setItem("current_page_view_id", eventId);
     } catch (e) {}
 
-    // ===== C) tracking durée active (idle > 15s pause) =====
+    // ===== D) tracking durée active (idle > 15s pause) =====
     let activeSeconds = 0;
     let lastActivity = Date.now();
     let isActive = true;
@@ -182,7 +265,7 @@
       if (isActive) activeSeconds++;
     }, 1000);
 
-    // ===== D) envoi durée (beacon) =====
+    // ===== E) envoi durée (beacon) =====
     window.addEventListener("beforeunload", () => {
       const id = sessionStorage.getItem("current_page_view_id");
       if (!id) return;
@@ -202,4 +285,5 @@
     });
   });
 })();
+
 
