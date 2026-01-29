@@ -7,7 +7,12 @@
   // 1) session_id
   try {
     if (!localStorage.getItem("session_id")) {
-      localStorage.setItem("session_id", crypto.randomUUID());
+      // fallback si randomUUID pas dispo (rare)
+      const sid =
+        (window.crypto && crypto.randomUUID)
+          ? crypto.randomUUID()
+          : (Date.now() + "-" + Math.random()).replace(".", "");
+      localStorage.setItem("session_id", sid);
     }
   } catch (e) {
     // si localStorage bloqué (rare), on ne casse pas la page
@@ -76,6 +81,13 @@
     sessionStorage.setItem("signup_origin_ts", String(Date.now()));
   }
 
+  function clearSignupOrigin() {
+    sessionStorage.removeItem("signup_origin_page_name");
+    sessionStorage.removeItem("signup_origin_page_type");
+    sessionStorage.removeItem("signup_origin_url");
+    sessionStorage.removeItem("signup_origin_ts");
+  }
+
   function getSignupOrigin() {
     const originName =
       sessionStorage.getItem("signup_origin_page_name") ||
@@ -125,6 +137,33 @@
     if (hasAction(el, "signup_intent")) {
       const origin = getSignupOrigin();
 
+      // Si c'est un lien (A), on retarde la navigation pour laisser partir le fetch
+      const link = el.tagName === "A" ? el : el.closest("a");
+      const isLink = !!(link && link.href);
+
+      if (isLink) {
+        e.preventDefault();
+
+        sendEvent({
+          type: "signup_intent",
+          url: origin.url,
+          metadata: {
+            page_name: origin.page_name,
+            page_type: origin.page_type,
+          },
+        }).finally(() => {
+          // On consomme l'origine (évite qu'elle reste "collée" pour la prochaine fois)
+          clearSignupOrigin();
+
+          setTimeout(() => {
+            window.location.href = link.href;
+          }, 150);
+        });
+
+        return;
+      }
+
+      // Bouton non-lien
       sendEvent({
         type: "signup_intent",
         url: origin.url,
@@ -132,6 +171,9 @@
           page_name: origin.page_name,
           page_type: origin.page_type,
         },
+      }).finally(() => {
+        // On consomme l'origine
+        clearSignupOrigin();
       });
     }
   });
@@ -285,5 +327,3 @@
     });
   });
 })();
-
-
