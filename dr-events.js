@@ -9,7 +9,7 @@
     if (!localStorage.getItem("session_id")) {
       // fallback si randomUUID pas dispo (rare)
       const sid =
-        (window.crypto && crypto.randomUUID)
+        window.crypto && crypto.randomUUID
           ? crypto.randomUUID()
           : (Date.now() + "-" + Math.random()).replace(".", "");
       localStorage.setItem("session_id", sid);
@@ -54,7 +54,7 @@
     }
   }
 
-  // (Optionnel mais pratique) exposer pour debug
+  // Exposer DR pour debug + usages externes (signup script, etc.)
   window.DR = window.DR || {};
   window.DR.sendEvent = sendEvent;
 
@@ -116,13 +116,23 @@
           window.location.pathname,
         page_type: document.body?.dataset?.type || originType || "unknown",
         url: window.location.href,
+        ts: ts || null,
       };
     }
 
-    return { page_name: originName, page_type: originType, url: originUrl };
+    return { page_name: originName, page_type: originType, url: originUrl, ts: ts || null };
   }
 
+  // Exposer les helpers origin pour que ton script signup puisse les lire/clear
+  window.DR.signupOrigin = {
+    store: storeSignupOrigin,
+    get: getSignupOrigin,
+    clear: clearSignupOrigin,
+  };
+
   // ===== A) Click tracking: store origin + signup_intent =====
+  // IMPORTANT: on NE clear PLUS l'origin ici.
+  // On clear UNIQUEMENT après un signup réussi (dans le script d'inscription).
   document.addEventListener("click", function (e) {
     const el = e.target.closest("[data-dr]");
     if (!el) return;
@@ -152,9 +162,6 @@
             page_type: origin.page_type,
           },
         }).finally(() => {
-          // On consomme l'origine (évite qu'elle reste "collée" pour la prochaine fois)
-          clearSignupOrigin();
-
           setTimeout(() => {
             window.location.href = link.href;
           }, 150);
@@ -171,10 +178,9 @@
           page_name: origin.page_name,
           page_type: origin.page_type,
         },
-      }).finally(() => {
-        // On consomme l'origine
-        clearSignupOrigin();
       });
+
+      return;
     }
   });
 
