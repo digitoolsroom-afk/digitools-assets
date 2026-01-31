@@ -4,6 +4,20 @@
   if (window.__DR_EVENTS_LOADED__) return;
   window.__DR_EVENTS_LOADED__ = true;
 
+  // 0) visitor_id (stable, ne change jamais même après signup/login)
+  try {
+    if (!localStorage.getItem("visitor_id")) {
+      // fallback si randomUUID pas dispo (rare)
+      const vid =
+        window.crypto && crypto.randomUUID
+          ? crypto.randomUUID()
+          : (Date.now() + "-" + Math.random()).replace(".", "");
+      localStorage.setItem("visitor_id", vid);
+    }
+  } catch (e) {
+    // si localStorage bloqué (rare), on ne casse pas la page
+  }
+
   // 1) session_id
   try {
     if (!localStorage.getItem("session_id")) {
@@ -25,6 +39,11 @@
       sessionId = localStorage.getItem("session_id");
     } catch (e) {}
 
+    let visitorId = null;
+    try {
+      visitorId = localStorage.getItem("visitor_id");
+    } catch (e) {}
+
     let userId = 0;
     try {
       const auth = JSON.parse(localStorage.getItem("auth") || "null");
@@ -33,6 +52,7 @@
 
     const payload = {
       ...eventData,
+      visitor_id: visitorId,
       session_id: sessionId,
       user_id: userId,
     };
@@ -124,7 +144,12 @@
       };
     }
 
-    return { page_name: originName, page_type: originType, url: originUrl, ts: ts || null };
+    return {
+      page_name: originName,
+      page_type: originType,
+      url: originUrl,
+      ts: ts || null,
+    };
   }
 
   // Exposer les helpers origin pour que ton script signup puisse les lire/clear
@@ -337,4 +362,5 @@
     });
   });
 })();
+
 
