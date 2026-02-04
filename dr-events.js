@@ -4,45 +4,107 @@
   if (window.__DR_EVENTS_LOADED__) return;
   window.__DR_EVENTS_LOADED__ = true;
 
-  // 0) visitor_id (stable, ne change jamais même après signup/login)
-  try {
-    if (!localStorage.getItem("visitor_id")) {
-      // fallback si randomUUID pas dispo (rare)
-      const vid =
-        window.crypto && crypto.randomUUID
-          ? crypto.randomUUID()
-          : (Date.now() + "-" + Math.random()).replace(".", "");
-      localStorage.setItem("visitor_id", vid);
-    }
-  } catch (e) {
-    // si localStorage bloqué (rare), on ne casse pas la page
+  // ===== visitor_id helpers (force non-null + fallback cookie) =====
+  function uuidFallback() {
+    return (Date.now() + "-" + Math.random()).replace(".", "");
   }
 
-  // 1) session_id
-  try {
-    if (!localStorage.getItem("session_id")) {
-      // fallback si randomUUID pas dispo (rare)
-      const sid =
+  function getCookie(name) {
+    const m = document.cookie.match(new RegExp("(^| )" + name + "=([^;]+)"));
+    return m ? decodeURIComponent(m[2]) : null;
+  }
+
+  function setCookie(name, value, days) {
+    const maxAge = days * 24 * 60 * 60;
+    document.cookie =
+      name +
+      "=" +
+      encodeURIComponent(value) +
+      "; path=/; max-age=" +
+      maxAge +
+      "; samesite=lax";
+  }
+
+  function ensureVisitorId() {
+    // 1) localStorage
+    try {
+      let vid = localStorage.getItem("visitor_id");
+      if (vid) return vid;
+
+      vid =
         window.crypto && crypto.randomUUID
           ? crypto.randomUUID()
-          : (Date.now() + "-" + Math.random()).replace(".", "");
-      localStorage.setItem("session_id", sid);
+          : uuidFallback();
+
+      localStorage.setItem("visitor_id", vid);
+
+      // On sync aussi en cookie (utile si localStorage saute)
+      try {
+        setCookie("dr_vid", vid, 365);
+      } catch (e) {}
+
+      return vid;
+    } catch (e) {
+      // 2) cookie fallback
+      let vid = null;
+      try {
+        vid = getCookie("dr_vid");
+      } catch (e2) {}
+
+      if (vid) return vid;
+
+      // 3) mémoire fallback (dernier recours)
+      if (!window.__DR_VISITOR_ID__) {
+        window.__DR_VISITOR_ID__ =
+          window.crypto && crypto.randomUUID
+            ? crypto.randomUUID()
+            : uuidFallback();
+
+        // on tente cookie quand même
+        try {
+          setCookie("dr_vid", window.__DR_VISITOR_ID__, 365);
+        } catch (e3) {}
+      }
+      return window.__DR_VISITOR_ID__;
     }
-  } catch (e) {
-    // si localStorage bloqué (rare), on ne casse pas la page
   }
+
+  // 0) visitor_id (stable, ne change jamais même après signup/login)
+  ensureVisitorId();
+
+  // 1) session_id
+  function ensureSessionId() {
+    try {
+      let sid = localStorage.getItem("session_id");
+      if (sid) return sid;
+
+      sid =
+        window.crypto && crypto.randomUUID
+          ? crypto.randomUUID()
+          : uuidFallback();
+
+      localStorage.setItem("session_id", sid);
+      return sid;
+    } catch (e) {
+      // fallback mémoire si localStorage bloqué
+      if (!window.__DR_SESSION_ID__) {
+        window.__DR_SESSION_ID__ =
+          window.crypto && crypto.randomUUID
+            ? crypto.randomUUID()
+            : uuidFallback();
+      }
+      return window.__DR_SESSION_ID__;
+    }
+  }
+  ensureSessionId();
 
   // 2) sendEvent (global)
   async function sendEvent(eventData) {
-    let sessionId = null;
-    try {
-      sessionId = localStorage.getItem("session_id");
-    } catch (e) {}
+    const sessionId = ensureSessionId();
+    const visitorId = ensureVisitorId();
 
-    let visitorId = null;
-    try {
-      visitorId = localStorage.getItem("visitor_id");
-    } catch (e) {}
+    // Si malgré tout on n’a pas de visitor_id, on n’envoie pas (évite stats cassées)
+    if (!visitorId) return null;
 
     let userId = 0;
     try {
@@ -79,7 +141,6 @@
   window.DR.sendEvent = sendEvent;
 
   // ✅ COMPAT: certains scripts (blog/landing) appellent sendEvent(...) en global
-  // (avant GitHub, tu l’avais sûrement en global dans Webflow)
   window.sendEvent = sendEvent;
 
   // ===== Helpers data-dr (multi actions) =====
@@ -160,8 +221,6 @@
   };
 
   // ===== A) Click tracking: store origin + signup_intent =====
-  // IMPORTANT: on NE clear PLUS l'origin ici.
-  // On clear UNIQUEMENT après un signup réussi (dans le script d'inscription).
   document.addEventListener("click", function (e) {
     const el = e.target.closest("[data-dr]");
     if (!el) return;
@@ -246,6 +305,7 @@
     return engines.some((x) => refHost.includes(x));
   }
 
+  // campaign / direct / internal / search / referral
   function computeReferrerType({ campaignSlug, referrerRaw }) {
     if (campaignSlug) return "campaign";
     if (!referrerRaw) return "direct";
@@ -266,11 +326,7 @@
 
     // ===== B) session_start (1 fois / session_id) =====
     try {
-      let sessionId = null;
-      try {
-        sessionId = localStorage.getItem("session_id");
-      } catch (e) {}
-
+      const sessionId = ensureSessionId();
       const sentKey = "session_start_sent_" + (sessionId || "noid");
 
       if (!sessionStorage.getItem(sentKey)) {
@@ -362,5 +418,6 @@
     });
   });
 })();
+
 
 
