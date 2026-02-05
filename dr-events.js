@@ -1,6 +1,6 @@
 /* Digitools Room — Events tracking (Xano) */
 (function () {
-  // Évite double chargement (si tu laisses par erreur l’ancien script dans Webflow sur une page)
+  // Évite double chargement (si tu laisses par erreur l'ancien script dans Webflow sur une page)
   if (window.__DR_EVENTS_LOADED__) return;
   window.__DR_EVENTS_LOADED__ = true;
 
@@ -103,7 +103,7 @@
     const sessionId = ensureSessionId();
     const visitorId = ensureVisitorId();
 
-    // Si malgré tout on n’a pas de visitor_id, on n’envoie pas (évite stats cassées)
+    // Si malgré tout on n'a pas de visitor_id, on n'envoie pas (évite stats cassées)
     if (!visitorId) return null;
 
     let userId = 0;
@@ -191,7 +191,7 @@
     const ts = parseInt(sessionStorage.getItem("signup_origin_ts") || "0", 10);
     const ageMs = ts ? Date.now() - ts : null;
 
-    // Si l'origin date de +30 min, on considère que ce n’est plus fiable
+    // Si l'origin date de +30 min, on considère que ce n'est plus fiable
     if (ageMs !== null && ageMs > 30 * 60 * 1000) {
       return {
         page_name:
@@ -220,7 +220,7 @@
     clear: clearSignupOrigin,
   };
 
-  // ===== A) Click tracking: store origin + signup_intent =====
+  // ===== A) Click tracking: store origin + signup_intent + login_intent =====
   document.addEventListener("click", function (e) {
     const el = e.target.closest("[data-dr]");
     if (!el) return;
@@ -228,7 +228,7 @@
     // 1) Si l'élément demande de stocker l'origine, on le fait
     if (hasAction(el, "store_signup_origin")) {
       storeSignupOrigin();
-      // IMPORTANT: pas de return (un même clic peut être aussi signup_intent)
+      // IMPORTANT: pas de return (un même clic peut être aussi signup_intent ou login_intent)
     }
 
     // 2) Si l'élément est une intention d'inscription, on envoie l'event
@@ -269,6 +269,27 @@
       });
 
       return;
+    }
+
+    // 3) ✅ NOUVEAU : Si l'élément est une intention de connexion, on envoie l'event
+    if (hasAction(el, "login_intent")) {
+      const pageName = document.body?.dataset?.page || document.title || window.location.pathname;
+      const pageType = document.body?.dataset?.type || "unknown";
+      
+      // Détecter la méthode de connexion depuis l'attribut data-login-method
+      const loginMethod = el.getAttribute("data-login-method") || "email";
+
+      sendEvent({
+        type: "login_intent",
+        url: window.location.href,
+        metadata: {
+          page_name: pageName,
+          page_type: pageType,
+          login_method: loginMethod, // "email" ou "google"
+        },
+      });
+
+      // Pas de return, on laisse le formulaire/bouton se comporter normalement
     }
   });
 
