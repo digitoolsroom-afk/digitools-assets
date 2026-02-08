@@ -1,3 +1,17 @@
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  const token = localStorage.getItem("adminAuthToken");
+  const role = localStorage.getItem("userRole");
+  const loggedIn = localStorage.getItem("isLoggedIn");
+
+  if (!token || loggedIn !== "true" || role !== "admin") {
+    window.location.href = "/admin/connexion";
+  }
+});
+</script>
+
+
+
 <!-- Affiche stats visitors -->
 <script>
 document.addEventListener("DOMContentLoaded", function () {
