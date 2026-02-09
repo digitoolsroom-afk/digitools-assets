@@ -3,7 +3,7 @@
 
 
 <!-- Affiche stats visitors -->
-<script>
+
 document.addEventListener("DOMContentLoaded", function () {
   const API_URL =
     "https://xmot-l3ir-7kuj.p7.xano.io/api:sfoT-uEe/stats_interne_visitors";
@@ -440,7 +440,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   updateSeoInterne(dateFilterSelect ? (dateFilterSelect.value || "today") : "today");
 });
-</script>
+
 
 
 
@@ -452,7 +452,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
 <!-- Affiche stats sessions -->
-<script>
+
 document.addEventListener("DOMContentLoaded", function () {
   const API_URL = "https://xmot-l3ir-7kuj.p7.xano.io/api:sfoT-uEe/stats_interne_sessions";
 
@@ -675,7 +675,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // Premier chargement
   updateSessionStats(dateFilterSelect ? (dateFilterSelect.value || "today") : "today");
 });
-</script>
+
 
 
 
@@ -697,7 +697,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
 <!-- Affichage pages clés -->
-<script>
+
 document.addEventListener("DOMContentLoaded", function () {
   const API_URL = "https://xmot-l3ir-7kuj.p7.xano.io/api:sfoT-uEe/stats_interne_pages";
 
@@ -928,7 +928,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // Premier chargement
   updatePagesStats(dateFilterSelect ? (dateFilterSelect.value || "today") : "today");
 });
-</script>
+
 
 
 
@@ -940,7 +940,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
 <!-- Affichage origine trafic/inscription -->
-<script>
+
 document.addEventListener("DOMContentLoaded", function () {
   const API_URL = "https://xmot-l3ir-7kuj.p7.xano.io/api:sfoT-uEe/stats_interne_traffic_source";
 
@@ -1308,7 +1308,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // Premier chargement
   updateTrafficSourceStats(dateFilterSelect ? (dateFilterSelect.value || "today") : "today");
 });
-</script>
+
 
 
 
@@ -1316,7 +1316,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
 <!-- Affichage page match freelance -->
-<script>
+
 document.addEventListener("DOMContentLoaded", function () {
   const API_URL = "https://xmot-l3ir-7kuj.p7.xano.io/api:sfoT-uEe/stats_interne_freelance";
 
@@ -1415,7 +1415,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // Premier chargement
   updateFreelanceStats(dateFilterSelect ? (dateFilterSelect.value || "today") : "today");
 });
-</script>
+
 
 
 
@@ -1427,7 +1427,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
 <!-- Affichage CTA -->
-<script>
+
 document.addEventListener("DOMContentLoaded", function () {
   const API_URL = "https://xmot-l3ir-7kuj.p7.xano.io/api:sfoT-uEe/stats_interne_cta";
 
@@ -1573,4 +1573,4 @@ document.addEventListener("DOMContentLoaded", function () {
   // Premier chargement
   updateCTAStats(dateFilterSelect ? (dateFilterSelect.value || "today") : "today");
 });
-</script>
+
