@@ -1,6 +1,6 @@
 /* Digitools Room — Events tracking (Xano) */
 (function () {
-  // Évite double chargement (si tu laisses par erreur l'ancien script dans Webflow sur une page)
+  // Évite double chargement
   if (window.__DR_EVENTS_LOADED__) return;
   window.__DR_EVENTS_LOADED__ = true;
 
@@ -98,6 +98,40 @@
   }
   ensureSessionId();
 
+  // ===== ✅ NOUVEAU: Helpers pour persister le campaign_slug =====
+  function getCampaignSlug() {
+    const params = new URLSearchParams(window.location.search);
+    const c = params.get("c");
+    return c && c.trim() ? c.trim() : null;
+  }
+
+  function storeCampaignSlug() {
+    const slug = getCampaignSlug();
+    if (slug) {
+      try {
+        sessionStorage.setItem("campaign_slug", slug);
+        sessionStorage.setItem("campaign_slug_ts", String(Date.now()));
+      } catch (e) {}
+    }
+  }
+
+  function getStoredCampaignSlug() {
+    try {
+      const slug = sessionStorage.getItem("campaign_slug");
+      const ts = parseInt(sessionStorage.getItem("campaign_slug_ts") || "0", 10);
+      
+      // Si le campaign_slug date de +30 min, on considère qu'il n'est plus valide
+      const ageMs = ts ? Date.now() - ts : null;
+      if (ageMs !== null && ageMs > 30 * 60 * 1000) {
+        return null;
+      }
+      
+      return slug;
+    } catch (e) {
+      return null;
+    }
+  }
+
   // 2) sendEvent (global)
   async function sendEvent(eventData) {
     const sessionId = ensureSessionId();
@@ -139,6 +173,11 @@
   // Exposer DR pour debug + usages externes (signup script, etc.)
   window.DR = window.DR || {};
   window.DR.sendEvent = sendEvent;
+  
+  // ✅ Exposer les helpers campaign pour le signup
+  window.DR.campaign = {
+    getSlug: getStoredCampaignSlug,
+  };
 
   // ✅ COMPAT: certains scripts (blog/landing) appellent sendEvent(...) en global
   window.sendEvent = sendEvent;
@@ -271,7 +310,7 @@
       return;
     }
 
-    // 3) ✅ NOUVEAU : Si l'élément est une intention de connexion, on envoie l'event
+    // 3) Si l'élément est une intention de connexion, on envoie l'event
     if (hasAction(el, "login_intent")) {
       const pageName = document.body?.dataset?.page || document.title || window.location.pathname;
       const pageType = document.body?.dataset?.type || "unknown";
@@ -293,13 +332,7 @@
     }
   });
 
-  // ===== Helpers referrer / campaign (pour session_start) =====
-  function getCampaignSlug() {
-    const params = new URLSearchParams(window.location.search);
-    const c = params.get("c");
-    return c && c.trim() ? c.trim() : null;
-  }
-
+  // ===== Helpers referrer (pour session_start) =====
   function getReferrerRaw() {
     const r = document.referrer;
     return r && r.trim() ? r.trim() : null;
@@ -341,6 +374,9 @@
 
   // 3 + 4) session_start + page_view + durée
   document.addEventListener("DOMContentLoaded", async function () {
+    // ✅ IMPORTANT: Stocker le campaign_slug dès que possible
+    storeCampaignSlug();
+    
     // Métadonnées page (communes)
     const pageName = document.body?.dataset?.page || null;
     const pageType = document.body?.dataset?.type || null;
