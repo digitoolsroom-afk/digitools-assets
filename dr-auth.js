@@ -396,7 +396,7 @@ document.querySelector("#googleSignupPopupBtn")?.addEventListener("click", () =>
 
     async function renderAuthUI() {
         const auth = readAuth();
-        const isLoginPage = location.pathname.includes('/oauth/login') || location.pathname.includes('/connexion');
+        const isLoginPage = location.pathname.includes('/oauth/login') || location.pathname.includes('/oauth/connexion');
 
         if (isLoginPage) {
             nukeAuth();
