@@ -474,16 +474,12 @@ document.querySelector("#googleSignupPopupBtn")?.addEventListener("click", () =>
 
 
 <!-- Gère le système de stockage des données user en local -->
-
 window.DR = window.DR || {};
-
 DR.Session = (function () {
   const KEY_AUTH = "auth";
   const KEY_LAST_REFRESH = "auth_user_refreshed_at";
   const REFRESH_TTL_MS = 10 * 60 * 1000; // 10 minutes
-
   let inflight = null;
-
   // --- UTILS ---
   function getAuth() {
     try {
@@ -492,69 +488,54 @@ DR.Session = (function () {
       return null;
     }
   }
-
   function setAuth(a) {
     try {
       localStorage.setItem(KEY_AUTH, JSON.stringify(a));
     } catch {}
   }
-
   function getToken() {
     const a = getAuth();
     return a?.token || a?.authToken || a?.jwt || null;
   }
-
   function getUser() {
     return getAuth()?.user || null;
   }
-
   function dispatchUserUpdated() {
     try {
       document.dispatchEvent(new Event("user-updated"));
     } catch {}
   }
-
   // --- API CALL ---
   async function fetchUserFullData() {
     const token = getToken();
     if (!token) return null;
-
     const res = await fetch("https://xmot-l3ir-7kuj.p7.xano.io/api:uFugjjm6/user_full_data", {
       headers: { Authorization: "Bearer " + token },
     });
     if (!res.ok) return null;
-
     try {
       return await res.json();
     } catch {
       return null;
     }
   }
-
   // --- REFRESH LOGIC ---
   async function refresh({ force = false } = {}) {
     const token = getToken();
     if (!token) return null;
-
-    // TTL (évite de spammer l’API)
     const last = parseInt(localStorage.getItem(KEY_LAST_REFRESH) || "0", 10) || 0;
     const freshEnough = Date.now() - last < REFRESH_TTL_MS;
     if (freshEnough && !force) return getUser();
-
     if (inflight) return inflight;
-
     inflight = (async () => {
       const data = await fetchUserFullData();
       if (data) {
         const current = getAuth() || {};
-
-        // ❗ Conserve exacte structure renvoyée par Xano
         const updated = {
           token: current.token,
           fetchedAt: Date.now(),
-          ...data, // user, courses_owned, invoices, coupons, user_resources
+          ...data,
         };
-
         setAuth(updated);
         localStorage.setItem(KEY_LAST_REFRESH, String(Date.now()));
         dispatchUserUpdated();
@@ -562,23 +543,19 @@ DR.Session = (function () {
       }
       return null;
     })();
-
     try {
       return await inflight;
     } finally {
       inflight = null;
     }
   }
-
   // --- INIT (CORRIGÉ) ---
   async function init() {
+    if (location.pathname.includes('/freelance/')) return; // ✅ Ne pas tourner sur les pages freelance
     const auth = getAuth();
     if (!auth?.token) return;
-
-    // ✅ Force le refresh pour récupérer toutes les données immédiatement
     refresh({ force: true }).catch(() => {});
   }
-
   // --- UPDATE USER LOCALLY ---
   function updateUserLocal(changes) {
     const auth = getAuth() || {};
@@ -586,14 +563,12 @@ DR.Session = (function () {
     setAuth(auth);
     dispatchUserUpdated();
   }
-
   // --- LOGOUT ---
   function logout() {
     localStorage.removeItem(KEY_AUTH);
     localStorage.removeItem(KEY_LAST_REFRESH);
     dispatchUserUpdated();
   }
-
   // --- EXPORT ---
   return {
     init,
@@ -604,7 +579,6 @@ DR.Session = (function () {
     logout,
   };
 })();
-
 // 🔄 Auto-init au chargement (version corrigée)
 DR.Session.init();
 
