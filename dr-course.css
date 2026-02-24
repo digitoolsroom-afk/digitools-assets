@@ -440,6 +440,9 @@
 .step.active .step-label { color:#111112; }
 .step-sublabel { font-size:.72rem; color:#9a9a9a; }
 
+/* ── CHAPTER LIST ── */
+.chapter-list { display:flex; flex-direction:column; gap:20px; }
+
 /* ── CHAPTER CARD ── */
 .chapter-card { background:#fff; border:1.5px solid #e0e7ff; border-radius:16px; overflow:hidden; }
 .chapter-card.drag-over { box-shadow:0 0 0 2px #2563eb; }
@@ -507,8 +510,7 @@
   padding:13px 16px; cursor:pointer;
   background:transparent; transition:background .1s;
 }
-.module-header:hover { background:#f8faff; }
-.module-item.is-required .module-header:hover { background:#eef5ff; }
+/* pas de hover sur module-header */
 
 .module-drag-handle { cursor:grab; color:#cbd5e1; font-size:.9rem; flex-shrink:0; user-select:none; }
 .module-drag-handle.disabled { cursor:default; opacity:.3; }
@@ -714,13 +716,22 @@
 }
 .builder-toast.show { opacity:1; }
 
+/* ── Durée input erreur message ── */
+.dur-error-msg {
+  font-size:.72rem; color:#ef4444; font-weight:500; margin-top:4px;
+  display:none;
+}
+.dur-error-msg.visible { display:block; }
+
+/* ── Inputs totaux cachés ── */
+#input-total-modules, #input-total-duration { display:none; }
+
 /* ── RESPONSIVE ── */
 @media (max-width:700px) {
   .module-grid { grid-template-columns:1fr; }
   .module-col-left { border-right:none; border-bottom:1px solid #f1f5f9; padding-bottom:14px; }
   .chapter-meta { flex-wrap:wrap; }
 }
-
 
 
 
