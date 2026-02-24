@@ -677,6 +677,20 @@ window.initCourseBuilder = function () {
     if (modEl) modEl.textContent = '📚 ' + ch.modules.length + ' module' + (ch.modules.length !== 1 ? 's' : '');
   }
 
+  // ── Met à jour les inputs cachés total modules + total durée ──
+  function updateTotals() {
+    let totalMods = 0;
+    let totalSec  = 0;
+    chapters.forEach(ch => {
+      totalMods += ch.modules.length;
+      totalSec  += chapterDurationSec(ch);
+    });
+    const inMods = document.getElementById('input-total-modules');
+    const inDur  = document.getElementById('input-total-duration');
+    if (inMods) inMods.value = totalMods;
+    if (inDur)  inDur.value  = totalSec;
+  }
+
   // ============================================================
   // FACTORIES
   // ============================================================
@@ -726,6 +740,7 @@ window.initCourseBuilder = function () {
     list.innerHTML = '';
     chapters.forEach((ch, ci) => list.appendChild(buildChapterEl(ch, ci)));
     initDragChapters();
+    updateTotals();
   }
 
   // ============================================================
@@ -815,23 +830,25 @@ window.initCourseBuilder = function () {
     }
     card.appendChild(modList);
 
-    // Bouton + Module en bas de la card
-    const addRow = document.createElement('div');
-    addRow.className = 'btn-add-module-row';
-    const addBtn = document.createElement('button');
-    addBtn.className = 'btn-add-module-main';
-    addBtn.textContent = '+ Ajouter un module';
-    addBtn.addEventListener('click', () => {
-      const newMod = makeModule({ module_order: ch.modules.length });
-      ch.modules.push(newMod);
-      render();
-      setTimeout(() => {
-        const el = document.querySelector(`[data-module-id="${newMod._id}"]`);
-        if (el) { el.classList.add('open'); el.querySelector('.module-body').style.display = 'flex'; }
-      }, 50);
-    });
-    addRow.appendChild(addBtn);
-    card.appendChild(addRow);
+    // Bouton + Module en bas de la card (pas pour le chapitre 0)
+    if (!ch.isIntro) {
+      const addRow = document.createElement('div');
+      addRow.className = 'btn-add-module-row';
+      const addBtn = document.createElement('button');
+      addBtn.className = 'btn-add-module-main';
+      addBtn.textContent = '+ Ajouter un module';
+      addBtn.addEventListener('click', () => {
+        const newMod = makeModule({ module_order: ch.modules.length });
+        ch.modules.push(newMod);
+        render();
+        setTimeout(() => {
+          const el = document.querySelector(`[data-module-id="${newMod._id}"]`);
+          if (el) { el.classList.add('open'); el.querySelector('.module-body').style.display = 'flex'; }
+        }, 50);
+      });
+      addRow.appendChild(addBtn);
+      card.appendChild(addRow);
+    }
 
     return card;
   }
@@ -972,21 +989,31 @@ window.initCourseBuilder = function () {
     const durInput = document.createElement('input');
     durInput.type = 'text'; durInput.className = 'module-input dur-input';
     durInput.value = mod.duration; durInput.placeholder = '00:00';
+    const durErrMsg = document.createElement('span');
+    durErrMsg.className = 'dur-error-msg';
+    durErrMsg.textContent = 'Format invalide — ex: 12:34';
+
+    durInput.addEventListener('input', () => {
+      // Efface l'erreur dès que l'utilisateur retape
+      durInput.classList.remove('error');
+      durErrMsg.classList.remove('visible');
+    });
     durInput.addEventListener('blur', () => {
       const v = durInput.value.trim();
       if (v && !isValidDuration(v)) {
         durInput.classList.add('error');
-        durInput.title = 'Format invalide — ex: 12:34';
+        durErrMsg.classList.add('visible');
       } else {
         durInput.classList.remove('error');
-        durInput.title = '';
+        durErrMsg.classList.remove('visible');
         mod.duration = v;
-        // Rafraîchit la durée du chapitre dans le header
         refreshChapterMeta(ch._id);
+        updateTotals();
       }
     });
     durField.appendChild(durLabel);
     durField.appendChild(durInput);
+    durField.appendChild(durErrMsg);
     colLeft.appendChild(durField);
     grid.appendChild(colLeft);
 
@@ -1056,16 +1083,36 @@ window.initCourseBuilder = function () {
     fileInput.style.display = 'none';
     zone.appendChild(fileInput);
 
-    // Si vidéo déjà uploadée : affiche directement le player
+    // Si vidéo déjà uploadée : affiche directement le player + bouton remplacer
     if (mod.vimeo_uri) {
       zone.appendChild(buildPlayer(mod.vimeo_uri));
-      // Petit bouton pour remplacer
       const replaceBtn = document.createElement('button');
       replaceBtn.className = 'upload-file-btn';
-      replaceBtn.style.cssText = 'font-size:.72rem;padding:6px 12px;margin-top:6px;';
+      replaceBtn.style.cssText = 'font-size:.72rem;padding:6px 12px;margin-top:6px;width:100%;';
       replaceBtn.textContent = '↩️ Remplacer la vidéo';
       replaceBtn.addEventListener('click', () => fileInput.click());
       zone.appendChild(replaceBtn);
+      // Quand un nouveau fichier est choisi → reset + rebuild + upload
+      fileInput.addEventListener('change', () => {
+        const file = fileInput.files[0];
+        if (!file) return;
+        mod.vimeo_uri = null;
+        mod.upload_status = 'idle';
+        mod.file = file;
+        // Rebuild la zone en mode upload
+        zone.innerHTML = '';
+        zone.classList.remove('has-video');
+        const freshZone = buildUploadZone(mod, ch, pill);
+        while (freshZone.firstChild) zone.appendChild(freshZone.firstChild);
+        // Déclenche l'upload avec le fichier
+        const freshInput = zone.querySelector('input[type=file]');
+        if (freshInput) {
+          const dt = new DataTransfer();
+          dt.items.add(file);
+          freshInput.files = dt.files;
+          freshInput.dispatchEvent(new Event('change'));
+        }
+      });
     } else {
       // Bouton + nom fichier
       const btnRow = document.createElement('div');
@@ -1175,20 +1222,52 @@ window.initCourseBuilder = function () {
       setPill(pill, mod);
       await pollVimeoStatus(vimeo_uri, mod.module_temp_id, statusText, progressFill);
 
-      // 5. Succès : barre 100% + player
+      // 5. Succès — rebuild propre de la zone upload
       mod.upload_status = 'uploaded';
       mod.vimeo_uri     = vimeo_uri;
-      progressFill.style.width = '100%';
-      progressFill.classList.add('success');
-      statusText.textContent = '✅ Vidéo prête';
-      zone.classList.add('has-video');
-
-      // Injecte le player dans la zone d'upload
-      const existingPlayer = zone.querySelector('iframe');
-      if (!existingPlayer) zone.appendChild(buildPlayer(vimeo_uri));
-
       setPill(pill, mod);
       refreshChapterMeta(ch._id);
+
+      // Vide la zone et reconstruit avec player + bouton remplacer
+      zone.innerHTML = '';
+      zone.classList.add('has-video');
+      const newFileInput = document.createElement('input');
+      newFileInput.type = 'file'; newFileInput.accept = 'video/*';
+      newFileInput.style.display = 'none';
+      zone.appendChild(newFileInput);
+      zone.appendChild(buildPlayer(vimeo_uri));
+      const replBtn = document.createElement('button');
+      replBtn.className = 'upload-file-btn';
+      replBtn.style.cssText = 'font-size:.72rem;padding:6px 12px;margin-top:6px;width:100%;';
+      replBtn.textContent = '↩️ Remplacer la vidéo';
+      replBtn.addEventListener('click', () => newFileInput.click());
+      zone.appendChild(replBtn);
+      // Relier le nouvel input au flow upload
+      newFileInput.addEventListener('change', () => {
+        const file = newFileInput.files[0];
+        if (!file) return;
+        mod.file = file;
+        mod.vimeo_uri = null;
+        mod.upload_status = 'idle';
+        // Rebuild complet de la zone
+        zone.innerHTML = '';
+        zone.classList.remove('has-video');
+        const freshZone = buildUploadZone(mod, ch, pill);
+        while (freshZone.firstChild) zone.appendChild(freshZone.firstChild);
+        // Trigger upload
+        const freshInput = zone.querySelector('input[type=file]');
+        const freshBtn   = zone.querySelector('.upload-file-btn');
+        const freshBar   = zone.querySelector('.upload-progress-bar');
+        const freshFill  = zone.querySelector('.upload-progress-fill');
+        const freshStatus= zone.querySelector('.upload-status-text');
+        if (freshInput) {
+          const dt = new DataTransfer();
+          dt.items.add(file);
+          freshInput.files = dt.files;
+          freshInput.dispatchEvent(new Event('change'));
+        }
+      });
+
       showToast('✅ Vidéo uploadée avec succès !');
 
     } catch (err) {
