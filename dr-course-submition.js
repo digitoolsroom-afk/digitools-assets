@@ -486,15 +486,14 @@ document.addEventListener('DOMContentLoaded', function () {
           } catch(e) { console.warn('Refresh auth failed:', e); }
 
           // ── Passe à l'étape 2 ──
-          // Masque l'étape 1
-          const step1Root = document.querySelector('.formation-root');
+          // Masque étape 1, affiche étape 2
+          const step1Root = document.getElementById('step1-root');
+          const step2Root = document.getElementById('step2-root');
           if (step1Root) step1Root.style.display = 'none';
-
-          // Affiche l'étape 2 en retirant la classe .dr-hidden
-          const step2 = document.getElementById('builder-root');
-          if (step2) {
-            step2.classList.remove('dr-hidden');
-            step2.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          if (step2Root) {
+            step2Root.style.removeProperty('display');
+            step2Root.style.cssText = 'display:flex!important;flex-direction:column;gap:12px;';
+            step2Root.scrollIntoView({ behavior: 'smooth', block: 'start' });
           }
 
           // Initialise le builder étape 2 avec les données auth fraîches
@@ -519,8 +518,6 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 
 });
-
-
 
 
 
