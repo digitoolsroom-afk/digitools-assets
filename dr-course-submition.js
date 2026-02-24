@@ -569,9 +569,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
 
 
-
-
-
 // ============================================================
 // dr-course-step2.js
 // NE S'INITIALISE PAS AUTOMATIQUEMENT.
@@ -581,6 +578,7 @@ document.addEventListener('DOMContentLoaded', function () {
 window.initCourseBuilder = function () {
 
   const VIMEO_UPLOAD_URL   = 'https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/vimeo_upload';
+  const VIMEO_DELETE_URL   = 'https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/vimeo_delete';
   const VIMEO_FINALIZE_URL = 'https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/vimeo_finalize';
   const VIMEO_STATUS_URL   = 'https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/vimeo_status';
   const CHUNK_SIZE         = 5 * 1024 * 1024; // 5 MB
@@ -603,6 +601,22 @@ window.initCourseBuilder = function () {
     t.textContent = msg;
     t.classList.add('show');
     setTimeout(() => t.classList.remove('show'), duration);
+  }
+
+  // ============================================================
+  // VIMEO DELETE (fire & forget)
+  // ============================================================
+  async function vimeoDelete(vimeoUri) {
+    if (!vimeoUri) return;
+    try {
+      await fetch(VIMEO_DELETE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify({ vimeo_uri: vimeoUri }),
+      });
+    } catch (e) {
+      console.warn('vimeoDelete failed:', e);
+    }
   }
 
   // ============================================================
@@ -1037,7 +1051,11 @@ window.initCourseBuilder = function () {
         if (mod.upload_status === 'uploading') { showToast('⚠️ Upload en cours.'); return; }
         showConfirm(
           `Supprimer "<strong>${mod.title || 'sans titre'}</strong>" ?`,
-          () => { ch.modules = ch.modules.filter(m => m._id !== mod._id); render(); }
+          () => {
+            if (mod.vimeo_uri) vimeoDelete(mod.vimeo_uri);
+            ch.modules = ch.modules.filter(m => m._id !== mod._id);
+            render();
+          }
         );
       });
       actRow.appendChild(delBtn);
@@ -1092,13 +1110,15 @@ window.initCourseBuilder = function () {
       replaceBtn.textContent = '↩️ Remplacer la vidéo';
       replaceBtn.addEventListener('click', () => fileInput.click());
       zone.appendChild(replaceBtn);
-      // Quand un nouveau fichier est choisi → reset + rebuild + upload
+      // Quand un nouveau fichier est choisi → supprime l'ancienne vidéo + rebuild + upload
       fileInput.addEventListener('change', () => {
         const file = fileInput.files[0];
         if (!file) return;
+        const oldUri = mod.vimeo_uri;
         mod.vimeo_uri = null;
         mod.upload_status = 'idle';
         mod.file = file;
+        if (oldUri) vimeoDelete(oldUri);
         // Rebuild la zone en mode upload
         zone.innerHTML = '';
         zone.classList.remove('has-video');
@@ -1247,6 +1267,8 @@ window.initCourseBuilder = function () {
         const file = newFileInput.files[0];
         if (!file) return;
         mod.file = file;
+        const oldUri = mod.vimeo_uri;
+        if (oldUri) vimeoDelete(oldUri);
         mod.vimeo_uri = null;
         mod.upload_status = 'idle';
         // Rebuild complet de la zone
