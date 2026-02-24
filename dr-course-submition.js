@@ -490,10 +490,10 @@ document.addEventListener('DOMContentLoaded', function () {
           const step1Root = document.querySelector('.formation-root');
           if (step1Root) step1Root.style.display = 'none';
 
-          // Affiche l'étape 2 et l'initialise (lit le nouveau localStorage)
+          // Affiche l'étape 2 en retirant la classe .dr-hidden
           const step2 = document.getElementById('builder-root');
           if (step2) {
-            step2.style.display = 'flex';
+            step2.classList.remove('dr-hidden');
             step2.scrollIntoView({ behavior: 'smooth', block: 'start' });
           }
 
