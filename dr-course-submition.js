@@ -572,7 +572,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
 
 
-
 // ============================================================
 // dr-course-step2.js
 // NE S'INITIALISE PAS AUTOMATIQUEMENT.
@@ -1210,11 +1209,13 @@ window.initCourseBuilder = function () {
       const interval = setInterval(async () => {
         attempts++;
         try {
-          const res = await fetch(VIMEO_STATUS_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-            body: JSON.stringify({ vimeo_uri: vimeoUri, module_temp_id: moduleTempId }),
-          });
+          const res = await fetch(
+            VIMEO_STATUS_URL + '?vimeo_uri=' + encodeURIComponent(vimeoUri),
+            {
+              method: 'GET',
+              headers: { 'Authorization': 'Bearer ' + token },
+            }
+          );
           if (!res.ok) { clearInterval(interval); reject(new Error('Erreur statut Vimeo')); return; }
           const data = await res.json();
 
