@@ -79,10 +79,42 @@
 // ── Étape 1 : init au chargement DOM ──
 document.addEventListener('DOMContentLoaded', function () {
 
-
   const auth    = JSON.parse(localStorage.getItem('auth') || 'null');
   const token   = auth?.token;
   const profile = auth?.freelance?.profile?.[0];
+
+  // ============================================================
+  // ROUTING — vérifie le statut de la formation au chargement
+  // ============================================================
+  (function checkCourseStatus() {
+    const courses = auth?.freelance?.course;
+    const course  = Array.isArray(courses) && courses.length > 0 ? courses[0] : null;
+    if (!course) return; // pas encore de formation → étape 1 normale
+
+    const s1 = document.getElementById('step1-root');
+    const s2 = document.getElementById('step2-root');
+
+    if (course.status === 'published') {
+      // Formation publiée → masquer les deux étapes, afficher message
+      if (s1) s1.style.display = 'none';
+      if (s2) s2.style.cssText = 'display:none!important;';
+      const msg = document.createElement('div');
+      msg.style.cssText = 'padding:40px 20px;text-align:center;font-family:"DM Sans",sans-serif;color:#111;';
+      msg.innerHTML = '<p style="font-size:1.1rem;font-weight:700;margin-bottom:8px;">✅ Formation déjà publiée</p><p style="font-size:0.85rem;color:#555;">Rendez-vous dans votre espace freelance pour la gérer.</p>';
+      if (s1) s1.insertAdjacentElement('afterend', msg);
+      return;
+    }
+
+    if (course.status === 'draft') {
+      // Formation en brouillon → aller directement à l'étape 2
+      if (s1) s1.style.display = 'none';
+      if (s2) s2.style.cssText = 'display:flex!important;flex-direction:column;gap:12px;';
+      if (typeof window.initCourseBuilder === 'function') {
+        window.initCourseBuilder();
+      }
+      return;
+    }
+  })();
 
   const UPLOAD_URL = 'https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/upload-proof';
   const SAVE_URL   = 'https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/create_formation';
@@ -537,6 +569,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
 
 
+
+
+
+
 // ============================================================
 // dr-course-step2.js
 // Script étape 2 — Constructeur chapitres & modules
@@ -562,13 +598,7 @@ window.initCourseBuilder = function () {
   const courses = auth?.freelance?.course;
   const courseId = (Array.isArray(courses) && courses.length > 0) ? courses[0].id : null;
 
-  // Affiche le course_id dans la toolbar
-  const courseInfoEl = document.getElementById('builder-course-info');
-  if (courseInfoEl) {
-    courseInfoEl.textContent = courseId
-      ? `Course ID : ${courseId}`
-      : '⚠️ Course ID introuvable — rechargez la page ou revenez à l\'étape 1';
-  }
+  // courseId is used internally — not displayed to user
 
   // State : array de chapitres
   // chapter = { id (temp), title, duration, chapter_order, modules: [] }
@@ -774,7 +804,7 @@ window.initCourseBuilder = function () {
     actions.className = 'chapter-actions';
 
     const addModBtn = document.createElement('button');
-    addModBtn.className = 'btn-icon';
+    addModBtn.className = 'btn-add-module-visible';
     addModBtn.innerHTML = '+ Module';
     addModBtn.title = 'Ajouter un module';
     addModBtn.addEventListener('click', () => {
@@ -986,20 +1016,24 @@ window.initCourseBuilder = function () {
     if (!mod.slug && mod.title) mod.slug = toSlug(mod.title);
     body.appendChild(titleField);
 
-    // Row : duration + hidden fields display
-    const row = document.createElement('div');
-    row.className = 'module-row';
+    // 2-column layout: left=fields, right=video
+    const cols = document.createElement('div');
+    cols.className = 'module-cols';
+
+    // ── Left column ──
+    const colLeft = document.createElement('div');
+    colLeft.className = 'module-col-left';
 
     const durField = document.createElement('div');
     durField.className = 'module-field';
     const durLabel = document.createElement('label');
     durLabel.className = 'module-label';
-    durLabel.textContent = 'Durée vidéo (mm:ss)';
+    durLabel.textContent = 'Durée de la vidéo';
     const durInput = document.createElement('input');
     durInput.type = 'text';
     durInput.className = 'module-input';
     durInput.value = mod.duration;
-    durInput.placeholder = '00:00';
+    durInput.placeholder = 'mm:ss  ex: 12:34';
     durInput.style.fontFamily = "'DM Mono', monospace";
     durInput.addEventListener('blur', () => {
       if (durInput.value && !isValidDuration(durInput.value)) {
@@ -1013,14 +1047,18 @@ window.initCourseBuilder = function () {
     });
     durField.appendChild(durLabel);
     durField.appendChild(durInput);
-    row.appendChild(durField);
+    colLeft.appendChild(durField);
+    cols.appendChild(colLeft);
+
+    // ── Right column: upload zone ──
+    const colRight = document.createElement('div');
+    colRight.className = 'module-col-right';
+    const uploadZone = buildUploadZone(mod, ch);
+    colRight.appendChild(uploadZone);
+    cols.appendChild(colRight);
 
     // module_temp_id — hidden, used internally only
-    body.appendChild(row);
-
-    // Upload zone
-    const uploadZone = buildUploadZone(mod, ch);
-    body.appendChild(uploadZone);
+    body.appendChild(cols);
 
     // Actions row
     const actionsRow = document.createElement('div');
@@ -1071,7 +1109,7 @@ window.initCourseBuilder = function () {
     // Upload btn
     const uploadBtn = document.createElement('button');
     uploadBtn.className = 'upload-file-btn';
-    uploadBtn.innerHTML = '🎬 Choisir une vidéo';
+    uploadBtn.innerHTML = '🎬 Choisir & uploader une vidéo';
     uploadBtn.disabled = mod.upload_status === 'uploading';
     uploadBtn.addEventListener('click', () => { fileInput.click(); });
     top.appendChild(uploadBtn);
@@ -1111,17 +1149,13 @@ window.initCourseBuilder = function () {
       zone.classList.add('has-video');
     }
 
-    // On file selected
+    // On file selected → start upload immediately (1 click UX)
     fileInput.addEventListener('change', () => {
       const file = fileInput.files[0];
       if (!file) return;
       mod.file = file;
       fileNameEl.textContent = file.name;
-      statusText.textContent = 'Prêt à uploader — cliquez sur "Uploader"';
-
-      // Replace btn
-      uploadBtn.innerHTML = '⬆️ Uploader la vidéo';
-      uploadBtn.onclick = () => startUpload(mod, ch, file, progressBar, progressFill, statusText, uploadBtn, zone);
+      startUpload(mod, ch, file, progressBar, progressFill, statusText, uploadBtn, zone);
     });
 
     return zone;
