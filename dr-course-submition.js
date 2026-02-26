@@ -402,6 +402,9 @@ window.initCourseStep1 = function () {
       async function (course) {
         btn.innerHTML = '✅ Enregistré — chargement…';
 
+        // ── FIX BUG 3 : stocker l'ID du cours créé pour initCourseBuilder ──
+        window._newCourseId = course.id;
+
         // Refresh localStorage
         try {
           const meRes = await fetch('https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/user_full_data', {
@@ -414,16 +417,30 @@ window.initCourseStep1 = function () {
           }
         } catch(e) { console.warn('Refresh auth failed:', e); }
 
-        // Passe à step2
-        const step1Root = document.getElementById('step1-root');
-        const step2Root = document.getElementById('step2-root');
-        if (step1Root) step1Root.style.display = 'none';
+        // ── FIX BUG 1+2 : cacher step1 (et ses titres), montrer step2 (et ses titres) ──
+        const step1Root  = document.getElementById('step1-root');
+        const step2Root  = document.getElementById('step2-root');
+        const step1Title = document.querySelector('.step-section-title:first-of-type');
+        const step1Desc  = document.querySelector('.step-section-desc:first-of-type');
+        const step2Title = document.getElementById('step2-title');
+        const step2Desc  = document.getElementById('step2-desc');
+
+        // Cacher tout ce qui appartient à step1
+        if (step1Root)  step1Root.style.display  = 'none';
+        if (step1Title) step1Title.style.display  = 'none';
+        if (step1Desc)  step1Desc.style.display   = 'none';
+
+        // Afficher tout ce qui appartient à step2
+        if (step2Title) step2Title.style.display  = 'block';
+        if (step2Desc)  step2Desc.style.display   = 'block';
         if (step2Root) {
           step2Root.style.cssText = 'display:flex!important;flex-direction:column;gap:12px;';
-          step2Root.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
 
         if (typeof window.initCourseBuilder === 'function') window.initCourseBuilder();
+
+        // Scroll vers step2
+        (step2Title || step2Root)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
         btn.disabled  = false;
         btn.innerHTML = '✅ Enregistré !';
@@ -457,8 +474,15 @@ window.initCourseBuilder = function () {
 
   const auth     = JSON.parse(localStorage.getItem('auth') || 'null');
   const token    = auth?.token;
+
+  // ── FIX BUG 3 : priorité à window._newCourseId (vient de step1 juste créé)
+  //    sinon fallback sur le localStorage (cas draft existant)
   const courses  = auth?.freelance?.course_draft;
-  const courseId = (Array.isArray(courses) && courses.length > 0) ? courses[0].id : null;
+  const courseId = window._newCourseId
+    || ((Array.isArray(courses) && courses.length > 0) ? courses[0].id : null);
+
+  // Nettoyer après usage
+  if (window._newCourseId) window._newCourseId = null;
 
   let chapters = [];
 
@@ -1020,7 +1044,7 @@ window.initCourseBuilder = function () {
 
   function validateForPublish() {
     const errors=[];
-    if(chapters.length<2) errors.push('Ajoutez au moins 1 chapitre de contenu en plus de l\'introduction');
+    if(chapters.length<2) errors.push("Ajoutez au moins 1 chapitre de contenu en plus de l'introduction");
     chapters.forEach((ch,ci)=>{
       const label=ch.isIntro?'Chapitre Introduction':`Chapitre ${ci}`;
       if(!ch.isIntro&&!ch.title.trim()) errors.push(`${label} : titre manquant`);
@@ -1128,8 +1152,17 @@ window.initCourseBuilder = function () {
   function hide(id)     { const el = document.getElementById(id); if (el) el.style.display = 'none'; }
   function showFlex(id) { const el = document.getElementById(id); if (el) el.style.display = 'flex'; }
 
-  // ── Cache tout au départ ──
+  // ── Cache TOUT au départ — avant que quoi que ce soit soit visible ──
   ['section-marketing','step1-root','step2-root','section-published'].forEach(hide);
+  // Cacher aussi les titres d'étape
+  const step1Title = document.querySelector('.step-section-title');
+  const step1Desc  = document.querySelector('.step-section-desc');
+  const step2Title = document.getElementById('step2-title');
+  const step2Desc  = document.getElementById('step2-desc');
+  if (step1Title) step1Title.style.display = 'none';
+  if (step1Desc)  step1Desc.style.display  = 'none';
+  if (step2Title) step2Title.style.display = 'none';
+  if (step2Desc)  step2Desc.style.display  = 'none';
 
   // ============================================================
   // CAS 1 : Aucun cours → marketing
@@ -1138,6 +1171,9 @@ window.initCourseBuilder = function () {
     showFlex('section-marketing');
     document.getElementById('btn-start-formation')?.addEventListener('click', () => {
       hide('section-marketing');
+      // Afficher step1 ET son titre
+      if (step1Title) step1Title.style.display = 'block';
+      if (step1Desc)  step1Desc.style.display  = 'block';
       show('step1-root');
       window.initCourseStep1();
     });
@@ -1155,6 +1191,9 @@ window.initCourseBuilder = function () {
       window._draftRestore = buildRestoreData(draftData);
     }
 
+    // Afficher step2 ET son titre
+    if (step2Title) step2Title.style.display = 'block';
+    if (step2Desc)  step2Desc.style.display  = 'block';
     show('step2-root');
     window.initCourseBuilder();
 
@@ -1182,6 +1221,9 @@ window.initCourseBuilder = function () {
       addBtn.style.display = 'inline-flex';
       addBtn.addEventListener('click', () => {
         hide('section-published');
+        // Afficher step1 ET son titre
+        if (step1Title) step1Title.style.display = 'block';
+        if (step1Desc)  step1Desc.style.display  = 'block';
         show('step1-root');
         window.initCourseStep1();
       });
