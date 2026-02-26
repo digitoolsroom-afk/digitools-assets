@@ -434,7 +434,8 @@ window.initCourseStep1 = function () {
         // ── FIX BUG 3 : stocker l'ID du cours créé pour initCourseBuilder ──
         window._newCourseId = course.id;
 
-        // Refresh localStorage
+        // Refresh localStorage — délai 800ms pour laisser Xano commiter
+        await new Promise(resolve => setTimeout(resolve, 800));
         try {
           const meRes = await fetch('https://xmot-l3ir-7kuj.p7.xano.io/api:uFugjjm6/user_full_data', {
             headers: { 'Authorization': 'Bearer ' + token }
