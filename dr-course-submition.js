@@ -1235,7 +1235,7 @@ window.initCourseBuilder = function () {
     list.innerHTML = '';
 
     if (!publishedData || publishedData.length === 0) {
-      list.innerHTML = '<div class="pub-empty">Aucune formation publiée pour l\'instant.</div>';
+      list.innerHTML = "<div class='pub-empty'>Aucune formation publiée pour l'instant.</div>";
       return;
     }
 
@@ -1277,16 +1277,3 @@ window.initCourseBuilder = function () {
   }
 
 })();
-
-
-
-
-
-
-
-
-
-
-
-
-
