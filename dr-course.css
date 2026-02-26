@@ -669,12 +669,13 @@
 #step2-title,
 #step2-desc,
 #section-marketing,
-#section-published {
+#section-published,
+#freelance--add-formation-submit-btn {
   display: none !important;
 }
 
 /* Classes activées par le JS routing pour afficher les sections */
-#step1-root.is-visible      { display: flex  !important; flex-direction: column; gap: 12px; }
+#step1-root.is-visible      { display: grid !important; grid-template-columns: 1fr 360px !important; gap: 24px !important; align-items: start !important; }
 #step2-root.is-visible      { display: flex  !important; flex-direction: column; gap: 12px; }
 #step1-title.is-visible,
 #step1-desc.is-visible,
@@ -682,6 +683,7 @@
 #step2-desc.is-visible      { display: block !important; }
 #section-marketing.is-visible { display: flex !important; }
 #section-published.is-visible { display: block !important; }
+#freelance--add-formation-submit-btn.is-visible { display: inline-flex !important; }
 
 
 
