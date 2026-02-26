@@ -1,4 +1,31 @@
 /* ============================================================
+   TITRES D'ÉTAPE
+   ============================================================ */
+.step-section-title {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #333;
+  margin: 0 0 6px 0;
+  line-height: 1.3;
+}
+.step-section-title .highlight {
+  color: #2563EB;
+  text-decoration: underline;
+  text-decoration-color: #BFDBFE;
+  text-decoration-thickness: 3px;
+  text-underline-offset: 10px;
+}
+.step-section-desc {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: #333;
+  margin: 0 0 16px 0;
+  line-height: 1.5;
+}
+
+/* ============================================================
    LAYOUT 2 COLONNES — forcé avec !important pour battre Webflow
    ============================================================ */
 #step1-root {
@@ -35,10 +62,12 @@
 }
 .step.active   .step-num { background: #111112; color: #fff; }
 .step.inactive .step-num { background: #f0f0ee; color: #9a9a9a; }
+.step.done     .step-num { background: #22c55e; color: #fff; }
 .step-info { display: flex; flex-direction: column; gap: 1px; }
 .step-label { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; }
 .step.active   .step-label { color: #111112; }
 .step.inactive .step-label { color: #9a9a9a; }
+.step.done     .step-label { color: #22c55e; }
 .step-sublabel { font-size: 0.72rem; color: #9a9a9a; }
 
 /* ============================================================
@@ -47,21 +76,21 @@
 .form-card {
   background: #fff;
   border-radius: 16px;
-  border: 1.5px solid #BFDBFE;  /* bordure bleue */
+  border: 1.5px solid #BFDBFE;
   overflow: hidden;
 }
 
 .form-card-header {
   padding: 14px 20px;
-  border-bottom: 1.5px solid #BFDBFE;  /* séparateur bleu */
-  background: #EFF6FF;                  /* fond bleu clair */
+  border-bottom: 1.5px solid #BFDBFE;
+  background: #EFF6FF;
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
 }
 
 .form-card-title {
   font-size: 0.75rem; font-weight: 700;
   text-transform: uppercase; letter-spacing: 0.08em;
-  color: #2563EB;   /* titre bleu */
+  color: #2563EB;
 }
 
 .optional-badge {
@@ -193,15 +222,15 @@
 .faq-add-btn:hover { background: #3B3B3B; }
 
 /* ============================================================
-   BOUTON ÉTAPE SUIVANTE
+   BOUTON ÉTAPE SUIVANTE — bleu
    ============================================================ */
 .next-step-btn {
-  padding: 13px 28px; background: #111112; color: #fff; border: none;
+  padding: 13px 28px; background: #2563EB; color: #fff; border: none;
   border-radius: 10px; font-family: 'DM Sans', sans-serif; font-size: 0.9rem;
   font-weight: 600; cursor: pointer; transition: background 0.15s;
   display: flex; align-items: center; gap: 8px; align-self: flex-start;
 }
-.next-step-btn:hover { background: #3B3B3B; }
+.next-step-btn:hover { background: #1d4ed8; }
 .next-step-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
 /* ============================================================
@@ -320,29 +349,6 @@
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ============================================================
    DR-COURSE STEP 2 — CSS
    DM Sans · #111112 · #2563eb · blanc · gris léger
@@ -439,7 +445,6 @@
   padding:13px 16px; cursor:pointer;
   background:transparent; transition:background .1s;
 }
-/* pas de hover sur module-header */
 
 .module-drag-handle { cursor:grab; color:#cbd5e1; font-size:.9rem; flex-shrink:0; user-select:none; }
 .module-drag-handle.disabled { cursor:default; opacity:.3; }
@@ -473,12 +478,8 @@
 }
 .module-item.open .module-body { display:flex; }
 
-/* Titre full-width */
-.module-title-section {
-  padding:16px 18px 0;
-}
+.module-title-section { padding:16px 18px 0; }
 
-/* Grid 2 col */
 .module-grid {
   display:grid; grid-template-columns:1fr 1.8fr; gap:0;
   border-top:1px solid #f1f5f9; margin-top:14px;
@@ -506,7 +507,6 @@
 .module-input:disabled { background:#f8fafc; color:#94a3b8; }
 .module-input.error { border-color:#ef4444; }
 
-/* Durée : DM Mono bien lisible */
 .dur-input {
   font-family:'DM Mono', monospace !important;
   font-size:.95rem !important;
@@ -545,7 +545,6 @@
 
 .upload-status-text { font-size:.74rem; color:#6b7280; font-weight:500; min-height:16px; }
 
-/* Player Vimeo — affiché à droite dans la 2e colonne */
 .upload-vimeo-player {
   width:100%; aspect-ratio:16/9;
   border-radius:8px; border:none; background:#0f0f0f; display:block;
