@@ -436,7 +436,7 @@ window.initCourseStep1 = function () {
 
         // Refresh localStorage
         try {
-          const meRes = await fetch('https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/user_full_data', {
+          const meRes = await fetch('https://xmot-l3ir-7kuj.p7.xano.io/api:uFugjjm6/user_full_data', {
             headers: { 'Authorization': 'Bearer ' + token }
           });
           if (meRes.ok) {
@@ -1128,7 +1128,7 @@ window.initCourseBuilder = function () {
       if(!res.ok) throw new Error('Erreur serveur ('+res.status+')');
       showToast('🚀 Formation publiée avec succès !',4000);
       try {
-        const meRes=await fetch('https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/user_full_data',{headers:{'Authorization':'Bearer '+token}});
+        const meRes=await fetch('https://xmot-l3ir-7kuj.p7.xano.io/api:uFugjjm6/user_full_data',{headers:{'Authorization':'Bearer '+token}});
         if(meRes.ok){const meData=await meRes.json();const cur=JSON.parse(localStorage.getItem('auth')||'{}');localStorage.setItem('auth',JSON.stringify(Object.assign({},cur,meData)));}
       } catch(e){console.warn('Refresh auth failed:',e);}
     } catch(err) { showToast('❌ Erreur publication : '+err.message,4000); }
