@@ -304,6 +304,7 @@ window.initCourseStep1 = function () {
     { id: 'formation-theme',       label: 'Thème' },
     { id: 'formation-titre',       label: 'Titre' },
     { id: 'formation-cover-url',   label: 'Image de couverture', hidden: true },
+    { id: 'formation-icon-url',    label: 'Icône du cours',      hidden: true },
     { id: 'formation-description', label: 'Description courte' },
     { id: 'formation-prix',        label: 'Prix HT' },
     { id: 'formation-duree',       label: 'Durée totale' },
@@ -317,6 +318,16 @@ window.initCourseStep1 = function () {
       this.parentElement.querySelector('.field-error-msg')?.remove();
     }));
   });
+
+  function addFieldError(container, msg) {
+    if (container && !container.querySelector('.field-error-msg')) {
+      const el = document.createElement('span');
+      el.className = 'field-error-msg';
+      el.textContent = msg;
+      container.appendChild(el);
+    }
+    return container;
+  }
 
   function validateForm() {
     let valid = true, firstErrorEl = null;
@@ -332,13 +343,8 @@ window.initCourseStep1 = function () {
         valid = false;
         if (field.hidden) {
           const container = el.closest('.field-group');
-          if (container && !container.querySelector('.field-error-msg')) {
-            const msg = document.createElement('span');
-            msg.className = 'field-error-msg';
-            msg.textContent = `${field.label} est requis`;
-            container.appendChild(msg);
-          }
-          if (!firstErrorEl && container) firstErrorEl = container;
+          const errEl = addFieldError(container, `${field.label} est requis`);
+          if (!firstErrorEl) firstErrorEl = errEl;
         } else {
           el.classList.add('input-error');
           if (!el.nextElementSibling?.classList.contains('field-error-msg')) {
@@ -352,17 +358,40 @@ window.initCourseStep1 = function () {
       }
     });
 
+    // Compétences min 2
     const comps = JSON.parse(document.getElementById('competences-hidden')?.value || '[]');
     if (comps.length < 2) {
       valid = false;
       const container = document.getElementById('competence-tags')?.closest('.field-group');
-      if (container && !container.querySelector('.field-error-msg')) {
-        const msg = document.createElement('span');
-        msg.className = 'field-error-msg';
-        msg.textContent = 'Ajoutez au moins 2 compétences';
-        container.appendChild(msg);
+      const errEl = addFieldError(container, 'Ajoutez au moins 2 compétences');
+      if (!firstErrorEl) firstErrorEl = errEl || document.getElementById('competence-input');
+    }
+
+    // Description longue obligatoire
+    const descLongueVal = document.getElementById('formation-desc-longue-hidden')?.value?.trim();
+    const descLongueEl  = document.getElementById('formation-desc-longue');
+    if (!descLongueVal || descLongueVal === '<br>' || descLongueVal.replace(/<[^>]*>/g,'').trim().length < 10) {
+      valid = false;
+      if (descLongueEl && !descLongueEl.classList.contains('input-error')) {
+        descLongueEl.classList.add('input-error');
+        if (!descLongueEl.nextElementSibling?.classList.contains('field-error-msg')) {
+          const msg = document.createElement('span');
+          msg.className = 'field-error-msg';
+          msg.textContent = 'Description longue requise';
+          descLongueEl.insertAdjacentElement('afterend', msg);
+        }
       }
-      if (!firstErrorEl) firstErrorEl = document.getElementById('competence-input');
+      if (!firstErrorEl) firstErrorEl = descLongueEl;
+    }
+
+    // FAQ min 2 questions
+    const faq = JSON.parse(document.getElementById('faq-hidden')?.value || '[]');
+    if (faq.length < 2) {
+      valid = false;
+      const faqContainer = document.getElementById('faq-list')?.closest('.field-group')
+                        || document.getElementById('faq-list')?.parentElement;
+      const errEl = addFieldError(faqContainer, 'Ajoutez au moins 2 questions à la FAQ');
+      if (!firstErrorEl) firstErrorEl = errEl || document.getElementById('faq-question');
     }
 
     if (firstErrorEl) firstErrorEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -417,30 +446,18 @@ window.initCourseStep1 = function () {
           }
         } catch(e) { console.warn('Refresh auth failed:', e); }
 
-        // ── FIX BUG 1+2 : cacher step1 (et ses titres), montrer step2 (et ses titres) ──
-        const step1Root  = document.getElementById('step1-root');
-        const step2Root  = document.getElementById('step2-root');
-        const step1Title = document.getElementById('step1-title');
-        const step1Desc  = document.getElementById('step1-desc');
-        const step2Title = document.getElementById('step2-title');
-        const step2Desc  = document.getElementById('step2-desc');
-
-        // Cacher tout ce qui appartient à step1
-        if (step1Root)  step1Root.style.display  = 'none';
-        if (step1Title) step1Title.style.display  = 'none';
-        if (step1Desc)  step1Desc.style.display   = 'none';
-
-        // Afficher tout ce qui appartient à step2
-        if (step2Title) step2Title.style.display  = 'block';
-        if (step2Desc)  step2Desc.style.display   = 'block';
-        if (step2Root) {
-          step2Root.style.cssText = 'display:flex!important;flex-direction:column;gap:12px;';
-        }
+        // Cacher step1, afficher step2 via classes CSS (résistant à Webflow)
+        ['step1-root','step1-title','step1-desc'].forEach(id => {
+          document.getElementById(id)?.classList.remove('is-visible');
+        });
+        ['step2-title','step2-desc','step2-root'].forEach(id => {
+          document.getElementById(id)?.classList.add('is-visible');
+        });
 
         if (typeof window.initCourseBuilder === 'function') window.initCourseBuilder();
 
         // Scroll vers step2
-        (step2Title || step2Root)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        document.getElementById('step2-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
         btn.disabled  = false;
         btn.innerHTML = '✅ Enregistré !';
@@ -1126,10 +1143,9 @@ window.initCourseBuilder = function () {
 
 
 // ============================================================
-// ROUTING
-// Placé en dernier dans le fichier — s'exécute via DOMContentLoaded
-// qui se déclenche APRÈS tous les scripts defer → step1 et step2
-// sont forcément définis quand le routing tourne.
+
+// ============================================================
+// ROUTING — s'exécute après step1 + step2 (DOMContentLoaded)
 // ============================================================
 
 (function () {
@@ -1147,33 +1163,21 @@ window.initCourseBuilder = function () {
   const draftData       = freelance.draft_item_by_course     || null;
   const publishedData   = freelance.published_item_by_course || [];
 
-  // ── Helpers show/hide ──
-  function show(id)     { const el = document.getElementById(id); if (el) el.style.removeProperty('display'); }
-  function hide(id)     { const el = document.getElementById(id); if (el) el.style.display = 'none'; }
-  function showFlex(id) { const el = document.getElementById(id); if (el) el.style.display = 'flex'; }
+  // ── show/hide via classe CSS (résistant aux overrides Webflow) ──
+  function show(id) { document.getElementById(id)?.classList.add('is-visible'); }
+  function hide(id) { document.getElementById(id)?.classList.remove('is-visible'); }
 
-  // ── Cache TOUT au départ — avant que quoi que ce soit soit visible ──
-  ['section-marketing','step1-root','step2-root','section-published'].forEach(hide);
-  // Cacher aussi les titres d'étape
-  const step1Title = document.getElementById('step1-title');
-  const step1Desc  = document.getElementById('step1-desc');
-  const step2Title = document.getElementById('step2-title');
-  const step2Desc  = document.getElementById('step2-desc');
-  if (step1Title) step1Title.style.display = 'none';
-  if (step1Desc)  step1Desc.style.display  = 'none';
-  if (step2Title) step2Title.style.display = 'none';
-  if (step2Desc)  step2Desc.style.display  = 'none';
+  // Tout est caché par défaut via CSS !important — on n'a rien à faire ici
 
   // ============================================================
   // CAS 1 : Aucun cours → marketing
   // ============================================================
   if (courseDraft.length === 0 && coursePublished.length === 0) {
-    showFlex('section-marketing');
+    show('section-marketing');
     document.getElementById('btn-start-formation')?.addEventListener('click', () => {
       hide('section-marketing');
-      // Afficher step1 ET son titre
-      if (step1Title) step1Title.style.display = 'block';
-      if (step1Desc)  step1Desc.style.display  = 'block';
+      show('step1-title');
+      show('step1-desc');
       show('step1-root');
       window.initCourseStep1();
     });
@@ -1184,16 +1188,11 @@ window.initCourseBuilder = function () {
   // CAS 2 : Draft actif → step2
   // ============================================================
   if (courseDraft.length > 0) {
-    hide('section-marketing');
-    hide('section-published');
-
     if (draftData && draftData.chapters && draftData.course) {
       window._draftRestore = buildRestoreData(draftData);
     }
-
-    // Afficher step2 ET son titre
-    if (step2Title) step2Title.style.display = 'block';
-    if (step2Desc)  step2Desc.style.display  = 'block';
+    show('step2-title');
+    show('step2-desc');
     show('step2-root');
     window.initCourseBuilder();
 
@@ -1201,7 +1200,7 @@ window.initCourseBuilder = function () {
       renderPublishedSection(publishedData);
       show('section-published');
       const addBtn = document.getElementById('freelance--add-formation-submit-btn');
-      if (addBtn) addBtn.style.display = 'inline-flex';
+      if (addBtn) addBtn.classList.add('is-visible');
     }
     return;
   }
@@ -1210,20 +1209,15 @@ window.initCourseBuilder = function () {
   // CAS 3 : Seulement publiés, pas de draft
   // ============================================================
   if (coursePublished.length > 0) {
-    hide('section-marketing');
-    hide('step1-root');
-    hide('step2-root');
-
     renderPublishedSection(publishedData);
     show('section-published');
     const addBtn = document.getElementById('freelance--add-formation-submit-btn');
     if (addBtn) {
-      addBtn.style.display = 'inline-flex';
+      addBtn.classList.add('is-visible');
       addBtn.addEventListener('click', () => {
         hide('section-published');
-        // Afficher step1 ET son titre
-        if (step1Title) step1Title.style.display = 'block';
-        if (step1Desc)  step1Desc.style.display  = 'block';
+        show('step1-title');
+        show('step1-desc');
         show('step1-root');
         window.initCourseStep1();
       });
@@ -1237,7 +1231,6 @@ window.initCourseBuilder = function () {
   function buildRestoreData(data) {
     const rawChapters = data.chapters || [];
     const rawModules  = data.course   || [];
-
     return [...rawChapters]
       .sort((a, b) => a.order_index - b.order_index)
       .map(ch => ({
@@ -1251,12 +1244,12 @@ window.initCourseBuilder = function () {
           .map(m => ({
             _id:            m.module_temp_id,
             module_temp_id: m.module_temp_id,
-            title:          m.title             || '',
-            slug:           m.slug              || '',
+            title:          m.title           || '',
+            slug:           m.slug            || '',
             duration:       secToMmSs(m.duration_seconds || 0),
-            module_order:   m.order_index       || 0,
-            upload_status:  m.vimeo_video_uri   ? 'uploaded' : 'idle',
-            vimeo_uri:      m.vimeo_video_uri   || null,
+            module_order:   m.order_index     || 0,
+            upload_status:  m.vimeo_video_uri ? 'uploaded' : 'idle',
+            vimeo_uri:      m.vimeo_video_uri || null,
             file:           null,
             is_required:    ch.order_index === 0 && m.order_index <= 2,
           })),
@@ -1268,28 +1261,22 @@ window.initCourseBuilder = function () {
     return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
   }
 
-  // ============================================================
-  // SECTION FORMATIONS PUBLIÉES
-  // ============================================================
   function renderPublishedSection(publishedData) {
     const list = document.getElementById('pub-list');
     if (!list) return;
     list.innerHTML = '';
-
     if (!publishedData || publishedData.length === 0) {
       list.innerHTML = "<div class='pub-empty'>Aucune formation publiée pour l'instant.</div>";
       return;
     }
-
     publishedData.forEach(item => {
-      const modules      = item.course   || [];
-      const chapters     = item.chapters || [];
-      const totalModules = modules.length;
-      const totalDurMin  = Math.ceil(modules.reduce((acc, m) => acc + (m.duration_seconds || 0), 0) / 60);
-      const courseTitle  = item.course_title
+      const modules     = item.course   || [];
+      const chapters    = item.chapters || [];
+      const totalMods   = modules.length;
+      const totalDurMin = Math.ceil(modules.reduce((acc, m) => acc + (m.duration_seconds || 0), 0) / 60);
+      const courseTitle = item.course_title
         || [...chapters].sort((a,b) => a.order_index - b.order_index)[0]?.title
         || 'Formation sans titre';
-
       const card = document.createElement('div');
       card.className = 'pub-card';
       card.innerHTML = `
@@ -1297,18 +1284,16 @@ window.initCourseBuilder = function () {
           <div class="pub-card-title">${esc(courseTitle)}</div>
           <div class="pub-card-meta">
             <span class="pub-card-badge published">✅ Publiée</span>
-            <span class="pub-card-badge">📚 ${totalModules} module${totalModules !== 1 ? 's' : ''}</span>
+            <span class="pub-card-badge">📚 ${totalMods} module${totalMods !== 1 ? 's' : ''}</span>
             <span class="pub-card-badge">⏱ ${totalDurMin} min</span>
             <span class="pub-card-badge">📂 ${chapters.length} chapitre${chapters.length !== 1 ? 's' : ''}</span>
           </div>
         </div>
         <div class="pub-card-actions">
           <button class="pub-btn-edit" data-course-id="${item.course_id}">✏️ Modifier</button>
-        </div>
-      `;
+        </div>`;
       card.querySelector('.pub-btn-edit').addEventListener('click', () => {
         if (typeof window.openCourseEdit === 'function') window.openCourseEdit(item);
-        else console.log('[routing] openCourseEdit non implémenté, course_id:', item.course_id);
       });
       list.appendChild(card);
     });
