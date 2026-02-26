@@ -995,8 +995,10 @@ window.initCourseBuilder = function () {
           const res = await fetch(VIMEO_STATUS_URL+'?vimeo_uri='+encodeURIComponent(vimeoUri), {method:'GET',headers:{'Authorization':'Bearer '+token}});
           if (!res.ok) { clearInterval(interval); reject(new Error('Erreur statut Vimeo')); return; }
           const data = await res.json();
-          if (data.transcode==='complete' && data.playable===true) { clearInterval(interval); resolve(); }
-          else if (data.transcode==='error') { clearInterval(interval); reject(new Error('Transcodage Vimeo échoué')); }
+          const isDone = (data.transcode==='complete' || data.transcode===true) && (data.playable===true || data.playable==='true');
+          const isErr  = data.transcode==='error' || data.transcode===false;
+          if (isDone) { clearInterval(interval); resolve(); }
+          else if (isErr) { clearInterval(interval); reject(new Error('Transcodage Vimeo échoué')); }
           else {
             const liveItem = document.querySelector(`[data-module-id="${mod._id}"]`);
             const pct = Math.min(85+attempts*2,99);
@@ -1052,13 +1054,88 @@ window.initCourseBuilder = function () {
   const SAVE_URL    = 'https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/save_module_chapter';
   const PUBLISH_URL = 'https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/published_module_chapter';
 
+  // ── RICH TEXT EDITOR — RESSOURCES ──
+  (function initRessourcesEditor() {
+    const editor   = document.getElementById('ressources-html');
+    const hidden   = document.getElementById('ressources-html-hidden');
+    const toolbar  = document.getElementById('ressources-rt-toolbar');
+    const linkBtn  = document.getElementById('ressources-link-btn');
+    const linkPopup= document.getElementById('ressources-link-popup');
+    const linkText = document.getElementById('ressources-link-text');
+    const linkUrl  = document.getElementById('ressources-link-url');
+    const linkOk   = document.getElementById('ressources-link-confirm');
+    const linkCx   = document.getElementById('ressources-link-cancel');
+    if (!editor) return;
+
+    // Sync hidden input
+    editor.addEventListener('input', () => { if (hidden) hidden.value = editor.innerHTML; });
+
+    // Placeholder
+    editor.addEventListener('focus', () => editor.classList.add('rt-focused'));
+    editor.addEventListener('blur',  () => editor.classList.remove('rt-focused'));
+
+    // Toolbar buttons (bold, italic, underline, removeFormat)
+    toolbar?.querySelectorAll('.rt-btn[data-cmd]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.preventDefault();
+        document.execCommand(btn.dataset.cmd, false, null);
+        editor.focus();
+        if (hidden) hidden.value = editor.innerHTML;
+      });
+    });
+
+    // Lien — ouvre popup
+    let savedRange = null;
+    linkBtn?.addEventListener('click', e => {
+      e.preventDefault();
+      // Sauvegarder la sélection
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount) {
+        savedRange = sel.getRangeAt(0).cloneRange();
+        linkText.value = sel.toString() || '';
+      }
+      linkUrl.value = '';
+      linkPopup.style.display = 'block';
+      linkUrl.focus();
+    });
+
+    linkCx?.addEventListener('click', () => { linkPopup.style.display = 'none'; editor.focus(); });
+
+    linkOk?.addEventListener('click', () => {
+      const txt = linkText.value.trim();
+      const url = linkUrl.value.trim();
+      if (!url) { linkPopup.style.display = 'none'; return; }
+      linkPopup.style.display = 'none';
+      editor.focus();
+      // Restaurer sélection
+      if (savedRange) {
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(savedRange);
+      }
+      const label = txt || url;
+      document.execCommand('insertHTML', false,
+        `<a href="${url}" target="_blank" rel="noopener" style="color:#2563eb;text-decoration:underline;">${label}</a>`
+      );
+      if (hidden) hidden.value = editor.innerHTML;
+      savedRange = null;
+    });
+
+    // Entrée dans popup = confirmer
+    [linkText, linkUrl].forEach(inp => inp?.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); linkOk.click(); }
+      if (e.key === 'Escape') { linkPopup.style.display = 'none'; editor.focus(); }
+    }));
+  })();
+
   function buildPayload() {
     recomputeOrders();
     const userId = auth?.user?.id || null;
     const chaptersPayload = chapters.map(ch=>({chapter_temp_id:ch._id,title:ch.title,slug:toSlug(ch.title),order_index:ch.chapter_order,duration:Math.ceil(chapterDurationSec(ch)/60),total_modules:ch.modules.length}));
     const modulesPayload=[];
     chapters.forEach(ch=>ch.modules.forEach(mod=>modulesPayload.push({chapter_temp_id:ch._id,module_temp_id:mod.module_temp_id,title:mod.title,slug:mod.slug||toSlug(mod.title),order_index:mod.module_order,duration_seconds:durationToSec(mod.duration),vimeo_video_uri:mod.vimeo_uri||null})));
-    return {course_id:courseId,user_id:userId,total_modules:modulesPayload.length,total_duration:chapters.reduce((acc,ch)=>acc+chapterDurationSec(ch),0),chapters:chaptersPayload,modules:modulesPayload};
+    const ressourcesHtml = document.getElementById('ressources-html-hidden')?.value || '';
+    return {course_id:courseId,user_id:userId,total_modules:modulesPayload.length,total_duration:chapters.reduce((acc,ch)=>acc+chapterDurationSec(ch),0),chapters:chaptersPayload,modules:modulesPayload,ressources_html:ressourcesHtml};
   }
 
   function validateForPublish() {
