@@ -1128,11 +1128,36 @@ window.initCourseBuilder = function () {
     try {
       const res=await fetch(PUBLISH_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify(buildPayload())});
       if(!res.ok) throw new Error('Erreur serveur ('+res.status+')');
-      showToast('🚀 Formation publiée avec succès !',4000);
+
+      // Refresh localStorage avec délai
+      await new Promise(resolve => setTimeout(resolve, 800));
       try {
         const meRes=await fetch('https://xmot-l3ir-7kuj.p7.xano.io/api:uFugjjm6/user_full_data',{headers:{'Authorization':'Bearer '+token}});
-        if(meRes.ok){const meData=await meRes.json();const cur=JSON.parse(localStorage.getItem('auth')||'{}');localStorage.setItem('auth',JSON.stringify(Object.assign({},cur,meData)));}
+        if(meRes.ok){
+          const meData=await meRes.json();
+          const cur=JSON.parse(localStorage.getItem('auth')||'{}');
+          localStorage.setItem('auth',JSON.stringify(Object.assign({},cur,meData)));
+
+          // Cacher step2 et ses titres
+          ['step2-root','step2-title','step2-desc'].forEach(id => {
+            document.getElementById(id)?.classList.remove('is-visible');
+          });
+
+          // Afficher section published et remplir les cards
+          const publishedData = meData?.freelance?.published_item_by_course || [];
+          if (typeof window.renderPublishedSection === 'function') {
+            window.renderPublishedSection(publishedData);
+          }
+          document.getElementById('section-published')?.classList.add('is-visible');
+          if (publishedData.length > 0) {
+            document.getElementById('freelance--add-formation-submit-btn')?.classList.add('is-visible');
+          }
+        }
       } catch(e){console.warn('Refresh auth failed:',e);}
+
+      // Afficher pop-up confirmation
+      document.getElementById('popup-publish-confirm')?.classList.add('active');
+
     } catch(err) { showToast('❌ Erreur publication : '+err.message,4000); }
     finally { btn.disabled=false; btn.textContent='🚀 Publier la formation'; }
   });
@@ -1272,27 +1297,46 @@ window.initCourseBuilder = function () {
       return;
     }
     publishedData.forEach(item => {
+      const courseInfo  = item.course_info || item;
       const modules     = item.course   || [];
-      const chapters    = item.chapters || [];
-      const totalMods   = modules.length;
-      const totalDurMin = Math.ceil(modules.reduce((acc, m) => acc + (m.duration_seconds || 0), 0) / 60);
-      const courseTitle = item.course_title
-        || [...chapters].sort((a,b) => a.order_index - b.order_index)[0]?.title
-        || 'Formation sans titre';
+      const totalMods   = courseInfo.modules_count || modules.length;
+      const totalDurMin = courseInfo.duration_minutes || Math.ceil(modules.reduce((acc, m) => acc + (m.duration_seconds || 0), 0) / 60);
+      const courseTitle = courseInfo.title || item.course_title || 'Formation sans titre';
+      const coverUrl    = courseInfo.cover_url || '';
+      const iconUrl     = courseInfo.icon_cours_url || '';
+      const status      = courseInfo.status || 'pending_validation';
+      const nbParticipants = courseInfo.nb_participants || 0;
+      const avgNote     = courseInfo.average_notation || 0;
+      const nbNotes     = courseInfo.nb_notation || 0;
+
+      const statusLabel = status === 'published' ? '✅ Publié' : '⏳ En cours de validation';
+      const statusClass = status === 'published' ? 'pub-badge-published' : 'pub-badge-pending';
+
+      const ratingHtml = nbNotes >= 1
+        ? `<span class="pub-card-badge">⭐ ${avgNote.toFixed(1)} (${nbNotes} avis)</span>`
+        : '';
+
       const card = document.createElement('div');
       card.className = 'pub-card';
       card.innerHTML = `
+        <div class="pub-card-cover">
+          ${coverUrl ? `<img src="${esc(coverUrl)}" alt="" />` : '<div class="pub-cover-placeholder"></div>'}
+        </div>
         <div class="pub-card-info">
-          <div class="pub-card-title">${esc(courseTitle)}</div>
+          <div class="pub-card-header">
+            ${iconUrl ? `<img class="pub-card-icon" src="${esc(iconUrl)}" alt="" />` : ''}
+            <div class="pub-card-title">${esc(courseTitle)}</div>
+          </div>
           <div class="pub-card-meta">
-            <span class="pub-card-badge published">✅ Publiée</span>
+            <span class="pub-card-badge ${statusClass}">${statusLabel}</span>
             <span class="pub-card-badge">📚 ${totalMods} module${totalMods !== 1 ? 's' : ''}</span>
             <span class="pub-card-badge">⏱ ${totalDurMin} min</span>
-            <span class="pub-card-badge">📂 ${chapters.length} chapitre${chapters.length !== 1 ? 's' : ''}</span>
+            <span class="pub-card-badge">👥 ${nbParticipants} participant${nbParticipants !== 1 ? 's' : ''}</span>
+            ${ratingHtml}
           </div>
         </div>
         <div class="pub-card-actions">
-          <button class="pub-btn-edit" data-course-id="${item.course_id}">✏️ Modifier</button>
+          <button class="pub-btn-edit" data-course-id="${item.id || item.course_id}">✏️ Modifier</button>
         </div>`;
       card.querySelector('.pub-btn-edit').addEventListener('click', () => {
         if (typeof window.openCourseEdit === 'function') window.openCourseEdit(item);
@@ -1300,9 +1344,40 @@ window.initCourseBuilder = function () {
       list.appendChild(card);
     });
   }
+  // Expose pour appel depuis le handler publish
+  window.renderPublishedSection = renderPublishedSection;
 
   function esc(str) {
     return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
+})();
+
+// ============================================================
+// POP-UP CONFIRMATION PUBLICATION — injectée dynamiquement
+// ============================================================
+(function() {
+  const popup = document.createElement('div');
+  popup.id = 'popup-publish-confirm';
+  popup.className = 'popup-overlay';
+  popup.innerHTML = `
+    <div class="popup-box publish-confirm-box">
+      <div class="publish-confirm-icon">🎉</div>
+      <h3 class="publish-confirm-title">Formation soumise avec succès !</h3>
+      <p class="publish-confirm-msg">
+        Merci d'avoir publié une formation sur notre plateforme.<br>
+        Celle-ci est en cours de validation par nos équipes.<br>
+        <strong>Cela peut prendre jusqu'à 24h.</strong>
+      </p>
+      <button class="publish-confirm-btn" id="btn-publish-confirm-close">C'est compris !</button>
+    </div>
+  `;
+  document.body.appendChild(popup);
+
+  document.getElementById('btn-publish-confirm-close')?.addEventListener('click', () => {
+    popup.classList.remove('active');
+  });
+  popup.addEventListener('click', e => {
+    if (e.target === popup) popup.classList.remove('active');
+  });
 })();
