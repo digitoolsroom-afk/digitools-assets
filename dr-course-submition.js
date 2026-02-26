@@ -455,10 +455,11 @@ window.initCourseStep1 = function () {
           document.getElementById(id)?.classList.add('is-visible');
         });
 
-        if (typeof window.initCourseBuilder === 'function') window.initCourseBuilder();
-
-        // Scroll vers step2
-        document.getElementById('step2-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // Laisser le navigateur redessiner step2-root avant d'appeler initCourseBuilder
+        setTimeout(() => {
+          if (typeof window.initCourseBuilder === 'function') window.initCourseBuilder();
+          document.getElementById('step2-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 50);
 
         btn.disabled  = false;
         btn.innerHTML = '✅ Enregistré !';
