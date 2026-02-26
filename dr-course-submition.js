@@ -420,8 +420,8 @@ window.initCourseStep1 = function () {
         // ── FIX BUG 1+2 : cacher step1 (et ses titres), montrer step2 (et ses titres) ──
         const step1Root  = document.getElementById('step1-root');
         const step2Root  = document.getElementById('step2-root');
-        const step1Title = document.querySelector('.step-section-title:first-of-type');
-        const step1Desc  = document.querySelector('.step-section-desc:first-of-type');
+        const step1Title = document.getElementById('step1-title');
+        const step1Desc  = document.getElementById('step1-desc');
         const step2Title = document.getElementById('step2-title');
         const step2Desc  = document.getElementById('step2-desc');
 
@@ -1155,8 +1155,8 @@ window.initCourseBuilder = function () {
   // ── Cache TOUT au départ — avant que quoi que ce soit soit visible ──
   ['section-marketing','step1-root','step2-root','section-published'].forEach(hide);
   // Cacher aussi les titres d'étape
-  const step1Title = document.querySelector('.step-section-title');
-  const step1Desc  = document.querySelector('.step-section-desc');
+  const step1Title = document.getElementById('step1-title');
+  const step1Desc  = document.getElementById('step1-desc');
   const step2Title = document.getElementById('step2-title');
   const step2Desc  = document.getElementById('step2-desc');
   if (step1Title) step1Title.style.display = 'none';
