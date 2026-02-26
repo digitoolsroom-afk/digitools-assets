@@ -1628,6 +1628,182 @@ window.initCourseBuilder = function () {
 
 
 
+// ============================================================
+// ROUTING
+// Placé en dernier dans le fichier — s'exécute via DOMContentLoaded
+// qui se déclenche APRÈS tous les scripts defer → step1 et step2
+// sont forcément définis quand le routing tourne.
+// ============================================================
+
+document.addEventListener('DOMContentLoaded', function () {
+
+  const auth      = JSON.parse(localStorage.getItem('auth') || 'null');
+  const freelance = auth?.freelance;
+
+  if (!freelance) {
+    console.warn('[routing] Pas de données freelance dans auth.');
+    return;
+  }
+
+  const courseDraft     = freelance.course_draft             || [];
+  const coursePublished = freelance.course_published         || [];
+  const draftData       = freelance.draft_item_by_course     || null;
+  const publishedData   = freelance.published_item_by_course || [];
+
+  // ── Helpers show/hide ──
+  function show(id)     { const el = document.getElementById(id); if (el) el.style.removeProperty('display'); }
+  function hide(id)     { const el = document.getElementById(id); if (el) el.style.display = 'none'; }
+  function showFlex(id) { const el = document.getElementById(id); if (el) el.style.display = 'flex'; }
+
+  // ── Cache tout au départ ──
+  ['section-marketing','step1-root','step2-root','section-published'].forEach(hide);
+
+  // ============================================================
+  // CAS 1 : Aucun cours → marketing
+  // ============================================================
+  if (courseDraft.length === 0 && coursePublished.length === 0) {
+    showFlex('section-marketing');
+    document.getElementById('btn-start-formation')?.addEventListener('click', () => {
+      hide('section-marketing');
+      show('step1-root');
+      window.initCourseStep1();
+    });
+    return;
+  }
+
+  // ============================================================
+  // CAS 2 : Draft actif → step2
+  // ============================================================
+  if (courseDraft.length > 0) {
+    hide('section-marketing');
+    hide('section-published');
+
+    if (draftData && draftData.chapters && draftData.course) {
+      window._draftRestore = buildRestoreData(draftData);
+    }
+
+    show('step2-root');
+    window.initCourseBuilder();
+
+    if (coursePublished.length > 0) {
+      renderPublishedSection(publishedData);
+      show('section-published');
+      const addBtn = document.getElementById('freelance--add-formation-submit-btn');
+      if (addBtn) addBtn.style.display = 'inline-flex';
+    }
+    return;
+  }
+
+  // ============================================================
+  // CAS 3 : Seulement publiés, pas de draft
+  // ============================================================
+  if (coursePublished.length > 0) {
+    hide('section-marketing');
+    hide('step1-root');
+    hide('step2-root');
+
+    renderPublishedSection(publishedData);
+    show('section-published');
+    const addBtn = document.getElementById('freelance--add-formation-submit-btn');
+    if (addBtn) {
+      addBtn.style.display = 'inline-flex';
+      addBtn.addEventListener('click', () => {
+        hide('section-published');
+        show('step1-root');
+        window.initCourseStep1();
+      });
+    }
+    return;
+  }
+
+  // ============================================================
+  // RECONSTRUCTION DONNÉES DRAFT
+  // ============================================================
+  function buildRestoreData(data) {
+    const rawChapters = data.chapters || [];
+    const rawModules  = data.course   || [];
+
+    return [...rawChapters]
+      .sort((a, b) => a.order_index - b.order_index)
+      .map(ch => ({
+        _id:           ch.chapter_temp_id,
+        title:         ch.title       || '',
+        chapter_order: ch.order_index || 0,
+        isIntro:       ch.order_index === 0,
+        modules: rawModules
+          .filter(m => m.chapter_temp_id === ch.chapter_temp_id)
+          .sort((a, b) => a.order_index - b.order_index)
+          .map(m => ({
+            _id:            m.module_temp_id,
+            module_temp_id: m.module_temp_id,
+            title:          m.title             || '',
+            slug:           m.slug              || '',
+            duration:       secToMmSs(m.duration_seconds || 0),
+            module_order:   m.order_index       || 0,
+            upload_status:  m.vimeo_video_uri   ? 'uploaded' : 'idle',
+            vimeo_uri:      m.vimeo_video_uri   || null,
+            file:           null,
+            is_required:    ch.order_index === 0 && m.order_index <= 2,
+          })),
+      }));
+  }
+
+  function secToMmSs(sec) {
+    if (!sec) return '';
+    return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+  }
+
+  // ============================================================
+  // SECTION FORMATIONS PUBLIÉES
+  // ============================================================
+  function renderPublishedSection(publishedData) {
+    const list = document.getElementById('pub-list');
+    if (!list) return;
+    list.innerHTML = '';
+
+    if (!publishedData || publishedData.length === 0) {
+      list.innerHTML = '<div class="pub-empty">Aucune formation publiée pour l\'instant.</div>';
+      return;
+    }
+
+    publishedData.forEach(item => {
+      const modules      = item.course   || [];
+      const chapters     = item.chapters || [];
+      const totalModules = modules.length;
+      const totalDurMin  = Math.ceil(modules.reduce((acc, m) => acc + (m.duration_seconds || 0), 0) / 60);
+      const courseTitle  = item.course_title
+        || [...chapters].sort((a,b) => a.order_index - b.order_index)[0]?.title
+        || 'Formation sans titre';
+
+      const card = document.createElement('div');
+      card.className = 'pub-card';
+      card.innerHTML = `
+        <div class="pub-card-info">
+          <div class="pub-card-title">${esc(courseTitle)}</div>
+          <div class="pub-card-meta">
+            <span class="pub-card-badge published">✅ Publiée</span>
+            <span class="pub-card-badge">📚 ${totalModules} module${totalModules !== 1 ? 's' : ''}</span>
+            <span class="pub-card-badge">⏱ ${totalDurMin} min</span>
+            <span class="pub-card-badge">📂 ${chapters.length} chapitre${chapters.length !== 1 ? 's' : ''}</span>
+          </div>
+        </div>
+        <div class="pub-card-actions">
+          <button class="pub-btn-edit" data-course-id="${item.course_id}">✏️ Modifier</button>
+        </div>
+      `;
+      card.querySelector('.pub-btn-edit').addEventListener('click', () => {
+        if (typeof window.openCourseEdit === 'function') window.openCourseEdit(item);
+        else console.log('[routing] openCourseEdit non implémenté, course_id:', item.course_id);
+      });
+      list.appendChild(card);
+    });
+  }
+
+  function esc(str) {
+    return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+});
 
 
 
