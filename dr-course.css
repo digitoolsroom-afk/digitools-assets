@@ -661,6 +661,28 @@
   .chapter-meta { flex-wrap:wrap; }
 }
 
+/* ── ROUTING : cache forcé — Webflow ne peut pas override !important ── */
+#step1-root,
+#step1-title,
+#step1-desc,
+#step2-root,
+#step2-title,
+#step2-desc,
+#section-marketing,
+#section-published {
+  display: none !important;
+}
+
+/* Classes activées par le JS routing pour afficher les sections */
+#step1-root.is-visible      { display: flex  !important; flex-direction: column; gap: 12px; }
+#step2-root.is-visible      { display: flex  !important; flex-direction: column; gap: 12px; }
+#step1-title.is-visible,
+#step1-desc.is-visible,
+#step2-title.is-visible,
+#step2-desc.is-visible      { display: block !important; }
+#section-marketing.is-visible { display: flex !important; }
+#section-published.is-visible { display: block !important; }
+
 
 
 
