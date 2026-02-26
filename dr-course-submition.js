@@ -1239,6 +1239,66 @@ window.initCourseBuilder = function () {
     finally { btn.disabled=false; btn.textContent='🚀 Publier la formation'; }
   });
 
+
+  // ── BOUTON ABANDONNER LA FORMATION (supprimer draft) ──
+  document.getElementById('btn-delete-draft')?.addEventListener('click', () => {
+    document.getElementById('popup-delete-draft')?.classList.add('active');
+  });
+  document.getElementById('btn-delete-draft-cancel')?.addEventListener('click', () => {
+    document.getElementById('popup-delete-draft')?.classList.remove('active');
+  });
+  document.getElementById('btn-delete-draft-confirm')?.addEventListener('click', async () => {
+    const popup = document.getElementById('popup-delete-draft');
+    const confirmBtn = document.getElementById('btn-delete-draft-confirm');
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Suppression…';
+
+    try {
+      const res = await fetch('https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/delate_course_drafted', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify({ course_id: courseId }),
+      });
+      if (!res.ok) throw new Error('Erreur serveur (' + res.status + ')');
+
+      popup?.classList.remove('active');
+
+      // Refresh localStorage
+      await new Promise(resolve => setTimeout(resolve, 800));
+      const meRes = await fetch('https://xmot-l3ir-7kuj.p7.xano.io/api:uFugjjm6/user_full_data', {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      if (!meRes.ok) throw new Error('Refresh auth failed');
+      const meData = await meRes.json();
+      const cur = JSON.parse(localStorage.getItem('auth') || '{}');
+      localStorage.setItem('auth', JSON.stringify(Object.assign({}, cur, meData)));
+
+      // Cacher step2 et ses titres
+      ['step2-root','step2-title','step2-desc'].forEach(id => {
+        document.getElementById(id)?.classList.remove('is-visible');
+      });
+
+      // Décider quoi afficher selon les données fraîches
+      const freshPublished = meData?.freelance?.course_published || [];
+      if (freshPublished.length > 0) {
+        // A des formations publiées → afficher la section published
+        if (typeof window.renderPublishedSection === 'function') {
+          window.renderPublishedSection(freshPublished);
+        }
+        document.getElementById('section-published')?.classList.add('is-visible');
+        document.getElementById('freelance--add-formation-submit-btn')?.classList.add('is-visible');
+      } else {
+        // Aucun cours → retour section marketing
+        document.getElementById('section-marketing')?.classList.add('is-visible');
+      }
+
+    } catch(err) {
+      alert('Erreur lors de la suppression : ' + err.message);
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = 'Oui, supprimer';
+    }
+  });
+
   document.querySelectorAll('[data-close]').forEach(btn=>btn.addEventListener('click',()=>document.getElementById(btn.dataset.close)?.classList.remove('active')));
   document.querySelectorAll('.popup-overlay').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('active');}));
   document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('.popup-overlay.active').forEach(p=>p.classList.remove('active'));});
