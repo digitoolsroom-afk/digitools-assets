@@ -1221,7 +1221,7 @@ window.initCourseBuilder = function () {
           });
 
           // Afficher section published et remplir les cards
-          const publishedData = meData?.freelance?.published_item_by_course || [];
+          const publishedData = meData?.freelance?.course_published || [];
           if (typeof window.renderPublishedSection === 'function') {
             window.renderPublishedSection(publishedData);
           }
@@ -1265,7 +1265,7 @@ window.initCourseBuilder = function () {
   const courseDraft     = freelance.course_draft             || [];
   const coursePublished = freelance.course_published         || [];
   const draftData       = freelance.draft_item_by_course     || null;
-  const publishedData   = freelance.published_item_by_course || [];
+  const publishedData   = freelance.course_published         || [];
 
   // ── show/hide via classe CSS (résistant aux overrides Webflow) ──
   function show(id) { document.getElementById(id)?.classList.add('is-visible'); }
