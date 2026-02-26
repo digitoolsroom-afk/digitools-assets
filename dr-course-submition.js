@@ -1303,8 +1303,7 @@ window.initCourseBuilder = function () {
     if (coursePublished.length > 0) {
       renderPublishedSection(publishedData);
       show('section-published');
-      const addBtn = document.getElementById('freelance--add-formation-submit-btn');
-      if (addBtn) addBtn.classList.add('is-visible');
+      // Pas de bouton "Nouvelle formation" tant qu'un draft est en cours
     }
     return;
   }
@@ -1374,23 +1373,21 @@ window.initCourseBuilder = function () {
       return;
     }
     publishedData.forEach(item => {
-      const courseInfo  = item.course_info || item;
-      const modules     = item.course   || [];
-      const totalMods   = courseInfo.modules_count || modules.length;
-      const totalDurMin = courseInfo.duration_minutes || Math.ceil(modules.reduce((acc, m) => acc + (m.duration_seconds || 0), 0) / 60);
-      const courseTitle = courseInfo.title || item.course_title || 'Formation sans titre';
-      const coverUrl    = courseInfo.cover_url || '';
-      const iconUrl     = courseInfo.icon_cours_url || '';
-      const status      = courseInfo.status || 'pending_validation';
-      const nbParticipants = courseInfo.nb_participants || 0;
-      const avgNote     = courseInfo.average_notation || 0;
-      const nbNotes     = courseInfo.nb_notation || 0;
+      // Les données sont directement dans item (course_published[i])
+      const courseTitle    = item.title            || 'Formation sans titre';
+      const coverUrl       = item.cover_url        || '';
+      const iconUrl        = item.icon_cours_url   || '';
+      const status         = item.status           || 'pending_validation';
+      const totalMods      = item.modules_count    || 0;
+      const totalDurMin    = item.duration_minutes || 0;
+      const nbParticipants = item.nb_participants  || 0;
+      const avgNote        = item.average_notation || 0;
+      const nbNotes        = item.nb_notation      || 0;
 
       const statusLabel = status === 'published' ? '✅ Publié' : '⏳ En cours de validation';
       const statusClass = status === 'published' ? 'pub-badge-published' : 'pub-badge-pending';
-
-      const ratingHtml = nbNotes >= 1
-        ? `<span class="pub-card-badge">⭐ ${avgNote.toFixed(1)} (${nbNotes} avis)</span>`
+      const ratingHtml  = nbNotes >= 1
+        ? `<span class="pub-card-badge">⭐ ${Number(avgNote).toFixed(1)} (${nbNotes} avis)</span>`
         : '';
 
       const card = document.createElement('div');
@@ -1413,7 +1410,7 @@ window.initCourseBuilder = function () {
           </div>
         </div>
         <div class="pub-card-actions">
-          <button class="pub-btn-edit" data-course-id="${item.id || item.course_id}">✏️ Modifier</button>
+          <button class="pub-btn-edit" data-course-id="${item.id}">✏️ Modifier</button>
         </div>`;
       card.querySelector('.pub-btn-edit').addEventListener('click', () => {
         if (typeof window.openCourseEdit === 'function') window.openCourseEdit(item);
