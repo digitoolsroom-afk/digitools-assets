@@ -1,4 +1,4 @@
-<script>
+
 // ============================================
 // SCRIPT 1 — Connexion / inscription AVEC GOOGLE
 // ============================================
@@ -523,5 +523,5 @@ document.addEventListener('DOMContentLoaded', function() {
 
   updateAuthUI();
 });
-</script>
+
 
