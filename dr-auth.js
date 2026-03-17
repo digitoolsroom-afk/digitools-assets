@@ -285,12 +285,6 @@ document.querySelector("#googleSignupPopupBtn")?.addEventListener("click", () =>
 );
 
 
-
-
-
-
-
-
 <!-- Gère l'affichage en fonction de la connexion -->
 
 (function() {
@@ -329,6 +323,19 @@ document.querySelector("#googleSignupPopupBtn")?.addEventListener("click", () =>
         });
     };
 
+    /* ====== BADGE EN LIGNE / HORS LIGNE ====== */
+    function setOnlineBadge(isOnline) {
+        document.querySelectorAll('.online-dot').forEach(dot => {
+            dot.classList.remove('online', 'offline');
+            dot.classList.add(isOnline ? 'online' : 'offline');
+        });
+        document.querySelectorAll('.online-label').forEach(label => {
+            label.classList.remove('online', 'offline');
+            label.classList.add(isOnline ? 'online' : 'offline');
+            label.textContent = isOnline ? 'En ligne' : 'Hors ligne';
+        });
+    }
+
     /* ====== ETAT UI (SÉLECTEURS AJUSTÉS) ====== */
     function showLoggedIn(user) {
         const body = document.body;
@@ -343,7 +350,10 @@ document.querySelector("#googleSignupPopupBtn")?.addEventListener("click", () =>
         setText('displayEmail', user?.email || ''); 
         
         // L'avatar devient une CLASSE :
-        setImg('.avatar-img', user?.avatar_url || ''); 
+        setImg('.avatar-img', user?.avatar_url || '');
+
+        // Badge en ligne
+        setOnlineBadge(true);
     }
 
     function showLoggedOut() {
@@ -360,6 +370,9 @@ document.querySelector("#googleSignupPopupBtn")?.addEventListener("click", () =>
         
         // L'avatar devient une CLASSE :
         setImg('.avatar-img', '');
+
+        // Badge hors ligne
+        setOnlineBadge(false);
     }
 
     /* ====== LOCAL CACHE (inchangé) ====== */
@@ -465,12 +478,6 @@ document.querySelector("#googleSignupPopupBtn")?.addEventListener("click", () =>
         bindLogout();
     });
 })();
-
-
-
-
-
-
 
 
 <!-- Gère le système de stockage des données user en local -->
@@ -581,9 +588,6 @@ DR.Session = (function () {
 })();
 // 🔄 Auto-init au chargement (version corrigée)
 DR.Session.init();
-
-
-
 
 
 <!-- Gère le système de conexion -->
