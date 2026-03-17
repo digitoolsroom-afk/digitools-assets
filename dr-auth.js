@@ -1,5 +1,3 @@
-<!-- Gère le système de connexion / inscription AVEC GOOGLE (avec visitor_id + session_id + campaign_slug + metadata origin) -->
-
 // ============================================
 // CONFIG
 // ============================================
@@ -285,14 +283,6 @@ document.querySelector("#googleSignupPopupBtn")?.addEventListener("click", () =>
 );
 
 
-
-
-
-
-
-
-<!-- Gère l'affichage en fonction de la connexion -->
-
 (function() {
     /* ====== PARAMS ====== */
     const API_ME = 'https://xmot-l3ir-7kuj.p7.xano.io/api:iEppGvhy/auth/me';
@@ -329,6 +319,19 @@ document.querySelector("#googleSignupPopupBtn")?.addEventListener("click", () =>
         });
     };
 
+    /* ====== BADGE EN LIGNE / HORS LIGNE ====== */
+    function setOnlineBadge(isOnline) {
+        $$('.online-dot').forEach(dot => {
+            dot.classList.remove('online', 'offline');
+            dot.classList.add(isOnline ? 'online' : 'offline');
+        });
+        $$('.online-label').forEach(label => {
+            label.classList.remove('online', 'offline');
+            label.classList.add(isOnline ? 'online' : 'offline');
+            label.textContent = isOnline ? 'En ligne' : 'Hors ligne';
+        });
+    }
+
     /* ====== ETAT UI (SÉLECTEURS AJUSTÉS) ====== */
     function showLoggedIn(user) {
         const body = document.body;
@@ -343,7 +346,10 @@ document.querySelector("#googleSignupPopupBtn")?.addEventListener("click", () =>
         setText('displayEmail', user?.email || ''); 
         
         // L'avatar devient une CLASSE :
-        setImg('.avatar-img', user?.avatar_url || ''); 
+        setImg('.avatar-img', user?.avatar_url || '');
+
+        // Badge en ligne
+        setOnlineBadge(true);
     }
 
     function showLoggedOut() {
@@ -360,6 +366,9 @@ document.querySelector("#googleSignupPopupBtn")?.addEventListener("click", () =>
         
         // L'avatar devient une CLASSE :
         setImg('.avatar-img', '');
+
+        // Badge hors ligne
+        setOnlineBadge(false);
     }
 
     /* ====== LOCAL CACHE (inchangé) ====== */
@@ -442,7 +451,7 @@ document.querySelector("#googleSignupPopupBtn")?.addEventListener("click", () =>
         }
     }
 
-    /* ====== LOGOUT (reste en ID) ====== */
+    /* ====== LOGOUT ====== */
     function doLogout(e) {
         e.preventDefault();
         nukeAuth();
@@ -451,11 +460,16 @@ document.querySelector("#googleSignupPopupBtn")?.addEventListener("click", () =>
     }
 
     function bindLogout() {
-        // Le bouton de déconnexion reste un ID unique:
-        const btn = $('logoutBtn'); 
-        if (btn) {
+        // ✅ Cible tous les boutons avec data-action="logout"
+        $$('[data-action="logout"]').forEach(btn => {
             btn.addEventListener('click', doLogout);
             btn.addEventListener('touchstart', doLogout);
+        });
+        // ✅ Rétrocompatibilité avec l'ancien id="logoutBtn"
+        const legacyBtn = $('logoutBtn');
+        if (legacyBtn && !legacyBtn.dataset.action) {
+            legacyBtn.addEventListener('click', doLogout);
+            legacyBtn.addEventListener('touchstart', doLogout);
         }
     }
 
@@ -464,16 +478,14 @@ document.querySelector("#googleSignupPopupBtn")?.addEventListener("click", () =>
         renderAuthUI();
         bindLogout();
     });
+
+    document.addEventListener('user-updated', () => {
+        renderAuthUI();
+    });
+
 })();
 
 
-
-
-
-
-
-
-<!-- Gère le système de stockage des données user en local -->
 window.DR = window.DR || {};
 DR.Session = (function () {
   const KEY_AUTH = "auth";
@@ -582,11 +594,6 @@ DR.Session = (function () {
 // 🔄 Auto-init au chargement (version corrigée)
 DR.Session.init();
 
-
-
-
-
-<!-- Gère le système de conexion -->
 
 document.addEventListener('DOMContentLoaded', function() {
 
