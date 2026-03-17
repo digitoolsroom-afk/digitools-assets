@@ -1,3 +1,5 @@
+<!-- Gère le système de connexion / inscription AVEC GOOGLE (avec visitor_id + session_id + campaign_slug + metadata origin) -->
+
 // ============================================
 // CONFIG
 // ============================================
@@ -283,6 +285,8 @@ document.querySelector("#googleSignupPopupBtn")?.addEventListener("click", () =>
 );
 
 
+<!-- Gère l'affichage en fonction de la connexion -->
+
 (function() {
     /* ====== PARAMS ====== */
     const API_ME = 'https://xmot-l3ir-7kuj.p7.xano.io/api:iEppGvhy/auth/me';
@@ -486,6 +490,8 @@ document.querySelector("#googleSignupPopupBtn")?.addEventListener("click", () =>
 })();
 
 
+<!-- Gère le système de stockage des données user en local -->
+
 window.DR = window.DR || {};
 DR.Session = (function () {
   const KEY_AUTH = "auth";
@@ -594,6 +600,8 @@ DR.Session = (function () {
 // 🔄 Auto-init au chargement (version corrigée)
 DR.Session.init();
 
+
+<!-- Gère le système de conexion -->
 
 document.addEventListener('DOMContentLoaded', function() {
 
