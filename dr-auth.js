@@ -1,3 +1,4 @@
+<!-- Gère le système de connexion / inscription AVEC GOOGLE (avec visitor_id + session_id + campaign_slug + metadata origin) -->
 // ============================================
 // CONFIG
 // ============================================
