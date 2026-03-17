@@ -323,19 +323,6 @@ document.querySelector("#googleSignupPopupBtn")?.addEventListener("click", () =>
         });
     };
 
-    /* ====== BADGE EN LIGNE / HORS LIGNE ====== */
-    function setOnlineBadge(isOnline) {
-        $$('.online-dot').forEach(dot => {
-            dot.classList.remove('online', 'offline');
-            dot.classList.add(isOnline ? 'online' : 'offline');
-        });
-        $$('.online-label').forEach(label => {
-            label.classList.remove('online', 'offline');
-            label.classList.add(isOnline ? 'online' : 'offline');
-            label.textContent = isOnline ? 'En ligne' : 'Hors ligne';
-        });
-    }
-
     /* ====== ETAT UI (SÉLECTEURS AJUSTÉS) ====== */
     function showLoggedIn(user) {
         const body = document.body;
@@ -352,8 +339,6 @@ document.querySelector("#googleSignupPopupBtn")?.addEventListener("click", () =>
         // L'avatar devient une CLASSE :
         setImg('.avatar-img', user?.avatar_url || '');
 
-        // Badge en ligne
-        setOnlineBadge(true);
     }
 
     function showLoggedOut() {
@@ -371,8 +356,6 @@ document.querySelector("#googleSignupPopupBtn")?.addEventListener("click", () =>
         // L'avatar devient une CLASSE :
         setImg('.avatar-img', '');
 
-        // Badge hors ligne
-        setOnlineBadge(false);
     }
 
     /* ====== LOCAL CACHE (inchangé) ====== */
