@@ -1549,90 +1549,126 @@ document.addEventListener('DOMContentLoaded', function() {
   const UPLOAD_URL         = 'https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/upload-proof';
   const VIMEO_UPLOAD_URL   = 'https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/vimeo_upload';
   const VIMEO_FINALIZE_URL = 'https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/vimeo_finalize';
+  const AUTH_URL           = 'https://xmot-l3ir-7kuj.p7.xano.io/api:uFugjjm6/user_full_data';
   const CHUNK_SIZE         = 5 * 1024 * 1024;
 
   const getAuth  = () => { try { return JSON.parse(localStorage.getItem('auth') || 'null'); } catch { return null; } };
   const getToken = () => { const a = getAuth(); return a?.authToken || a?.token || a?.jwt || null; };
 
-  // État courant
-  let _currentCourse    = null; // données brutes du cours
-  let _currentChapters  = [];
-  let _currentModules   = [];
-  let _pendingRequests  = [];
-  let _editSkills       = [];
-  let _editFaq          = [];
+  let _currentCourse   = null;
+  let _currentChapters = [];
+  let _currentModules  = [];
+  let _pendingRequests = [];
+  let _editSkills      = [];
+  let _editFaq         = [];
 
   // ============================================================
-  // POINT D'ENTRÉE — appelé par le clic sur ✏️ Modifier
+  // TOAST — indépendant du grand script, timer annulable
+  // ============================================================
+  function showToastEdit(msg, duration) {
+    duration = duration || 3000;
+    let t = document.getElementById('edit-toast-el');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'edit-toast-el';
+      t.style.cssText = 'position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:#111112;color:#fff;padding:11px 24px;border-radius:10px;font-family:DM Sans,sans-serif;font-size:.82rem;font-weight:500;z-index:99999;opacity:0;pointer-events:none;transition:opacity .25s;white-space:nowrap;max-width:90vw;';
+      document.body.appendChild(t);
+    }
+    if (t._timer) clearTimeout(t._timer);
+    t.textContent = msg;
+    t.style.opacity = '0';
+    void t.offsetHeight; // force reflow pour relancer la transition
+    t.style.opacity = '1';
+    t._timer = setTimeout(() => { t.style.opacity = '0'; }, duration);
+  }
+
+  function showPopupRequestSent(msg) {
+    const msgEl = document.getElementById('popup-request-sent-msg');
+    if (msgEl) msgEl.textContent = msg;
+    document.getElementById('popup-request-sent')?.classList.add('active');
+  }
+
+  function setValue(id, val) {
+    const el = document.getElementById(id);
+    if (el) el.value = val ?? '';
+  }
+
+  // ============================================================
+  // REFRESH LOCALSTORAGE
+  // ============================================================
+  async function refreshAuth() {
+    const token = getToken();
+    try {
+      const res = await fetch(AUTH_URL, { headers: { 'Authorization': 'Bearer ' + token } });
+      if (!res.ok) return;
+      const meData = await res.json();
+      const cur = JSON.parse(localStorage.getItem('auth') || '{}');
+      localStorage.setItem('auth', JSON.stringify(Object.assign({}, cur, meData)));
+      if (typeof window.renderPublishedSection === 'function') {
+        window.renderPublishedSection(meData?.freelance?.course_published || []);
+      }
+    } catch(e) { console.warn('[edit] refreshAuth failed:', e); }
+  }
+
+  // ============================================================
+  // POINT D'ENTRÉE
   // ============================================================
   window.openCourseEdit = async function (item) {
-    const token = getToken();
     const status = item.status || 'pending_validation';
-
-    // Cas 1 : cours en attente de validation
     if (status === 'pending_validation') {
       document.getElementById('popup-pending-validation')?.classList.add('active');
       return;
     }
-
-    // Cas 2 : charger et ouvrir la section édition
     await loadEditSection(item.id);
   };
 
   // ============================================================
-  // CHARGER LA SECTION
+  // CHARGEMENT
   // ============================================================
   async function loadEditSection(courseId) {
     const token = getToken();
     showToastEdit('⏳ Chargement…');
 
     try {
-      // Charger les données du cours + demandes en attente
       const courseRes = await fetch(`${MODIFY_COURSE_URL}?course_id=${courseId}`, {
         headers: { 'Authorization': 'Bearer ' + token }
       });
-      if (!courseRes.ok) throw new Error('Erreur chargement cours');
+      if (!courseRes.ok) throw new Error('Erreur chargement cours (' + courseRes.status + ')');
       const courseData = await courseRes.json();
 
-      // Charger les demandes en parallèle (silencieux si endpoint pas dispo)
       let requestsData = { requests: [] };
       try {
-        const requestsRes = await fetch(`${GET_REQUESTS_URL}?course_id=${courseId}`, {
+        const reqRes = await fetch(`${GET_REQUESTS_URL}?course_id=${courseId}`, {
           headers: { 'Authorization': 'Bearer ' + token }
         });
-        if (requestsRes.ok) requestsData = await requestsRes.json();
+        if (reqRes.ok) requestsData = await reqRes.json();
       } catch(e) { console.warn('[edit] get_requests failed:', e); }
 
       _currentCourse   = courseData.course;
-      _currentChapters = (courseData.chapters || []).sort((a,b) => a.order_index - b.order_index);
+      _currentChapters = (courseData.chapters || []).sort((a, b) => a.order_index - b.order_index);
       _currentModules  = courseData.modules  || [];
       _pendingRequests = requestsData.requests || [];
 
-      // Masquer section published, afficher section édition
       document.getElementById('section-published')?.classList.remove('is-visible');
       const editSection = document.getElementById('section-edit-course');
       if (editSection) editSection.style.display = 'block';
 
-      // Remplir les champs
       fillInfosTab();
       fillStructureTab();
       fillDemandesTab();
-
-      // Tabs
       initEditTabs();
-      initEditBackBtn(courseId);
+      initEditBackBtn();
       initInfosForm(courseId);
-      initStructureActions(courseId);
       initReplaceVideoUpload(courseId);
 
     } catch(e) {
       console.error('[edit] loadEditSection:', e);
-      showToastEdit('❌ Erreur chargement');
+      showToastEdit('❌ Erreur chargement : ' + e.message, 5000);
     }
   }
 
   // ============================================================
-  // REMPLIR L'ONGLET INFOS
+  // ONGLET INFOS
   // ============================================================
   function fillInfosTab() {
     const c = _currentCourse;
@@ -1642,65 +1678,48 @@ document.addEventListener('DOMContentLoaded', function() {
     const statusBadge = document.getElementById('edit-status-badge');
     if (statusBadge) {
       statusBadge.textContent = c.status === 'published' ? '✅ Publié' : '⏳ En validation';
-      statusBadge.className = 'edit-status-badge ' + (c.status === 'published' ? 'published' : 'pending');
+      statusBadge.className   = 'edit-status-badge ' + (c.status === 'published' ? 'published' : 'pending');
     }
 
-    setValue('edit-theme',       c.theme            || '');
-    setValue('edit-title',       c.title            || '');
-    setValue('edit-desc-short',  c.description_short|| '');
-    setValue('edit-desc-long',   c.description_long || '');
-    setValue('edit-trainer-bio', c.trainer_bio      || '');
-    setValue('edit-duration',    c.duration_minutes || '');
-    setValue('edit-modules-count', c.modules_count  || '');
+    setValue('edit-theme',         c.theme             || '');
+    setValue('edit-title',         c.title             || '');
+    setValue('edit-desc-short',    c.description_short || '');
+    setValue('edit-desc-long',     c.description_long  || '');
+    setValue('edit-trainer-bio',   c.trainer_bio       || '');
+    setValue('edit-duration',      c.duration_minutes  || '');
+    setValue('edit-modules-count', c.modules_count     || '');
 
-    // Prix actuel
     const priceEl = document.getElementById('edit-price-current');
     if (priceEl) priceEl.textContent = `Prix actuel : ${c.price_cents ? (c.price_cents / 100) + ' €' : '—'}`;
 
-    // Icône
     const iconPreview = document.getElementById('edit-icon-preview');
-    if (iconPreview && c.icon_cours_url) {
-      iconPreview.src = c.icon_cours_url;
-      iconPreview.style.display = 'block';
-    }
+    if (iconPreview && c.icon_cours_url) { iconPreview.src = c.icon_cours_url; iconPreview.style.display = 'block'; }
     setValue('edit-icon-url', c.icon_cours_url || '');
 
-    // Cover
     const coverPreview = document.getElementById('edit-cover-preview');
-    if (coverPreview && c.cover_url) {
-      coverPreview.src = c.cover_url;
-      coverPreview.style.display = 'block';
-    }
+    if (coverPreview && c.cover_url) { coverPreview.src = c.cover_url; coverPreview.style.display = 'block'; }
     setValue('edit-cover-url', c.cover_url || '');
 
-    // Skills
     _editSkills = Array.isArray(c.skills) ? [...c.skills] : [];
-    renderEditSkills();
+    _editFaq    = Array.isArray(c.faq)    ? [...c.faq]    : [];
 
-    // FAQ
-    _editFaq = Array.isArray(c.faq) ? [...c.faq] : [];
+    renderEditSkills();
     renderEditFaq();
 
-    // Init upload images
-    initImageUpload('edit-icon-file', 'edit-icon-preview', 'edit-icon-url', 'edit-icon-status');
+    initImageUpload('edit-icon-file',  'edit-icon-preview',  'edit-icon-url',  'edit-icon-status');
     initImageUpload('edit-cover-file', 'edit-cover-preview', 'edit-cover-url', 'edit-cover-status');
-
-    // Init skills
     initSkillsEdit();
-
-    // Init FAQ
     initFaqEdit();
   }
 
   // ============================================================
-  // REMPLIR L'ONGLET STRUCTURE
+  // ONGLET STRUCTURE
   // ============================================================
   function fillStructureTab() {
     const list = document.getElementById('edit-chapters-list');
     if (!list) return;
     list.innerHTML = '';
 
-    // ✅ Si demandes pending → bloquer l'onglet structure avec message
     const hasPending = _pendingRequests.some(r => r.status === 'pending');
     if (hasPending) {
       list.innerHTML = `
@@ -1708,85 +1727,57 @@ document.addEventListener('DOMContentLoaded', function() {
           <div style="font-size:2rem;">🔒</div>
           <div style="font-size:.95rem;font-weight:700;color:#111112;">Structure temporairement verrouillée</div>
           <div style="font-size:.82rem;color:#6b7280;line-height:1.6;max-width:420px;">
-            Vous avez des demandes de modification structurelle en attente de validation.<br>
-            La structure sera à nouveau modifiable une fois que toutes vos demandes auront été traitées.<br><br>
+            Vous avez des demandes de modification en attente de validation.<br>
+            La structure sera à nouveau modifiable une fois qu'elles auront toutes été traitées.<br><br>
             Consultez l'onglet <strong>Mes demandes</strong> pour suivre leur état.
           </div>
-        </div>
-      `;
+        </div>`;
       return;
     }
 
     _currentChapters.forEach((ch, ci) => {
-      const modules = _currentModules
-        .filter(m => m.chapter_temp_id === ch.chapter_temp_id)
-        .sort((a, b) => a.order_index - b.order_index);
-
-      // Vérifier si demandes en attente sur ce chapitre
+      const modules   = _currentModules.filter(m => m.chapter_temp_id === ch.chapter_temp_id).sort((a, b) => a.order_index - b.order_index);
       const chRequest = _pendingRequests.find(r => r.target_id === String(ch.id) && r.target_type === 'chapter');
 
-      const card = document.createElement('div');
-      card.className = 'edit-chapter-card';
+      const card   = document.createElement('div'); card.className = 'edit-chapter-card';
+      const header = document.createElement('div'); header.className = 'edit-chapter-header';
 
-      // Header chapitre
-      const header = document.createElement('div');
-      header.className = 'edit-chapter-header';
-
-      const badge = document.createElement('span');
-      badge.className = 'edit-chapter-badge';
+      const badge = document.createElement('span'); badge.className = 'edit-chapter-badge';
       badge.textContent = ci === 0 ? 'CHAPITRE 0 — INTRO' : `CHAPITRE ${ci}`;
       header.appendChild(badge);
 
       const titleInput = document.createElement('input');
-      titleInput.className = 'edit-chapter-title-input';
-      titleInput.value = ch.title || '';
-      titleInput.disabled = ci === 0; // intro non modifiable
+      titleInput.className   = 'edit-chapter-title-input';
+      titleInput.value       = ch.title || '';
+      titleInput.disabled    = ci === 0;
       titleInput.placeholder = 'Titre du chapitre…';
       header.appendChild(titleInput);
 
-      // Badge demande en attente
       if (chRequest) {
-        const reqBadge = document.createElement('span');
-        reqBadge.className = 'edit-request-badge delete';
-        reqBadge.textContent = '🗑 Suppression en attente';
-        header.appendChild(reqBadge);
+        const b = document.createElement('span'); b.className = 'edit-request-badge delete';
+        b.textContent = '🗑 Suppression en attente'; header.appendChild(b);
       }
 
-      const actions = document.createElement('div');
-      actions.className = 'edit-chapter-actions';
-
-      // Bouton sauvegarder titre (direct)
+      const actions = document.createElement('div'); actions.className = 'edit-chapter-actions';
       if (ci !== 0) {
-        const saveBtn = document.createElement('button');
-        saveBtn.className = 'edit-btn-save-chapter';
+        const saveBtn = document.createElement('button'); saveBtn.className = 'edit-btn-save-chapter';
         saveBtn.textContent = '💾 Titre';
         saveBtn.addEventListener('click', () => saveChapterTitle(ch.id, titleInput.value));
         actions.appendChild(saveBtn);
-
-        // Bouton supprimer (demande)
         if (!chRequest) {
-          const delBtn = document.createElement('button');
-          delBtn.className = 'edit-btn-delete-chapter';
+          const delBtn = document.createElement('button'); delBtn.className = 'edit-btn-delete-chapter';
           delBtn.textContent = '🗑 Supprimer';
           delBtn.addEventListener('click', () => requestDeleteChapter(ch));
           actions.appendChild(delBtn);
         }
       }
-
       header.appendChild(actions);
       card.appendChild(header);
 
-      // Liste modules
-      const modList = document.createElement('div');
-      modList.className = 'edit-modules-list';
+      const modList = document.createElement('div'); modList.className = 'edit-modules-list';
+      modules.forEach((mod, mi) => modList.appendChild(buildEditModuleEl(mod, mi, ch)));
 
-      modules.forEach((mod, mi) => {
-        modList.appendChild(buildEditModuleEl(mod, mi, ch));
-      });
-
-      // Bouton ajouter module (demande)
-      const addModBtn = document.createElement('button');
-      addModBtn.className = 'edit-btn-add-module';
+      const addModBtn = document.createElement('button'); addModBtn.className = 'edit-btn-add-module';
       addModBtn.textContent = '+ Demander l\'ajout d\'un module';
       addModBtn.addEventListener('click', () => requestAddModule(ch));
       modList.appendChild(addModBtn);
@@ -1797,76 +1788,59 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   function buildEditModuleEl(mod, mi, ch) {
-    // Vérifier demandes en attente sur ce module
-    const modRequest = _pendingRequests.find(r => r.target_id === String(mod.id) && r.target_type === 'module');
+    const modRequest   = _pendingRequests.find(r => r.target_id === String(mod.id) && r.target_type === 'module');
     const isPendingAdd = mod._pendingAdd === true;
 
     const item = document.createElement('div');
     item.className = 'edit-module-item' + (isPendingAdd ? ' pending-add' : '');
 
-    const num = document.createElement('div');
-    num.className = 'edit-module-num';
-    num.textContent = mi + 1;
+    const num = document.createElement('div'); num.className = 'edit-module-num'; num.textContent = mi + 1;
     item.appendChild(num);
 
     const titleInput = document.createElement('input');
-    titleInput.className = 'edit-module-title-input';
-    titleInput.value = mod.title || '';
+    titleInput.className   = 'edit-module-title-input';
+    titleInput.value       = mod.title || '';
+    titleInput.disabled    = isPendingAdd;
     titleInput.placeholder = 'Titre du module…';
-    titleInput.disabled = isPendingAdd;
     item.appendChild(titleInput);
 
-    // Badge demande
     if (modRequest) {
-      const reqBadge = document.createElement('span');
-      reqBadge.className = 'edit-request-badge ' + (modRequest.change_type === 'delete_module' ? 'delete' : 'video');
-      reqBadge.textContent = modRequest.change_type === 'delete_module' ? '🗑 Suppression en attente' : '🎬 Remplacement vidéo en attente';
-      item.appendChild(reqBadge);
+      const b = document.createElement('span');
+      b.className   = 'edit-request-badge ' + (modRequest.change_type === 'delete_module' ? 'delete' : 'video');
+      b.textContent = modRequest.change_type === 'delete_module' ? '🗑 Suppression en attente' : '🎬 Remplacement vidéo en attente';
+      item.appendChild(b);
     }
-
     if (isPendingAdd) {
-      const reqBadge = document.createElement('span');
-      reqBadge.className = 'edit-request-badge add';
-      reqBadge.textContent = '⏳ Ajout en attente';
-      item.appendChild(reqBadge);
+      const b = document.createElement('span'); b.className = 'edit-request-badge add';
+      b.textContent = '⏳ Ajout en attente'; item.appendChild(b);
     }
 
-    const actions = document.createElement('div');
-    actions.className = 'edit-module-actions';
-
+    const actions = document.createElement('div'); actions.className = 'edit-module-actions';
     if (!isPendingAdd) {
-      // Bouton sauvegarder titre (direct)
-      const saveBtn = document.createElement('button');
-      saveBtn.className = 'edit-btn-save-module';
+      const saveBtn = document.createElement('button'); saveBtn.className = 'edit-btn-save-module';
       saveBtn.textContent = '💾 Titre';
       saveBtn.addEventListener('click', () => saveModuleTitle(mod.id, titleInput.value));
       actions.appendChild(saveBtn);
 
-      // Bouton remplacer vidéo (demande) — si pas de demande déjà en attente
       if (!modRequest || modRequest.change_type !== 'replace_video') {
-        const replaceBtn = document.createElement('button');
-        replaceBtn.className = 'edit-btn-replace-video';
-        replaceBtn.textContent = '🎬 Remplacer vidéo';
-        replaceBtn.addEventListener('click', () => openReplaceVideoPopup(mod.id));
-        actions.appendChild(replaceBtn);
+        const replBtn = document.createElement('button'); replBtn.className = 'edit-btn-replace-video';
+        replBtn.textContent = '🎬 Remplacer vidéo';
+        replBtn.addEventListener('click', () => openReplaceVideoPopup(mod.id));
+        actions.appendChild(replBtn);
       }
-
-      // Bouton supprimer (demande) — si pas de demande déjà en attente
       if (!modRequest || modRequest.change_type !== 'delete_module') {
-        const delBtn = document.createElement('button');
-        delBtn.className = 'edit-btn-delete-module';
+        const delBtn = document.createElement('button'); delBtn.className = 'edit-btn-delete-module';
         delBtn.textContent = '🗑';
         delBtn.addEventListener('click', () => requestDeleteModule(mod, ch));
         actions.appendChild(delBtn);
       }
     }
-
     item.appendChild(actions);
     return item;
   }
 
   // ============================================================
-  // REMPLIR L'ONGLET DEMANDES
+  // ONGLET DEMANDES
   // ============================================================
   function fillDemandesTab() {
     const list = document.getElementById('edit-requests-list');
@@ -1878,51 +1852,36 @@ document.addEventListener('DOMContentLoaded', function() {
       return;
     }
 
-    const typeLabels = {
-      delete_chapter: '🗑 Suppression chapitre',
-      delete_module:  '🗑 Suppression module',
-      add_module:     '➕ Ajout module',
-      replace_video:  '🎬 Remplacement vidéo',
-    };
-    const statusLabels = { pending: 'En attente', approved: 'Approuvé', rejected: 'Refusé' };
+    const typeLabels   = { delete_chapter:'🗑 Suppression chapitre', delete_module:'🗑 Suppression module', add_module:'➕ Ajout module', replace_video:'🎬 Remplacement vidéo' };
+    const statusLabels = { pending:'En attente', approved:'Approuvé', rejected:'Refusé' };
 
-    _pendingRequests
-      .sort((a,b) => b.requested_at - a.requested_at)
-      .forEach(req => {
-        const row = document.createElement('div');
-        row.className = 'edit-request-row';
+    [..._pendingRequests].sort((a, b) => b.requested_at - a.requested_at).forEach(req => {
+      const row = document.createElement('div'); row.className = 'edit-request-row';
 
-        const typeEl = document.createElement('div');
-        typeEl.className = 'edit-request-type';
-        typeEl.textContent = typeLabels[req.change_type] || req.change_type;
-        row.appendChild(typeEl);
+      const typeEl = document.createElement('div'); typeEl.className = 'edit-request-type';
+      typeEl.textContent = typeLabels[req.change_type] || req.change_type;
+      row.appendChild(typeEl);
 
-        const targetEl = document.createElement('div');
-        targetEl.className = 'edit-request-target';
-        try {
-          const p = JSON.parse(req.payload || '{}');
-          targetEl.textContent = p.title || p.module_title || `ID: ${req.target_id}`;
-        } catch { targetEl.textContent = `ID: ${req.target_id}`; }
-        row.appendChild(targetEl);
+      const targetEl = document.createElement('div'); targetEl.className = 'edit-request-target';
+      try { const p = JSON.parse(req.payload || '{}'); targetEl.textContent = p.title || p.module_title || `ID: ${req.target_id}`; }
+      catch { targetEl.textContent = `ID: ${req.target_id}`; }
+      row.appendChild(targetEl);
 
-        const dateEl = document.createElement('div');
-        dateEl.className = 'edit-request-date';
-        dateEl.textContent = req.requested_at
-          ? new Date(req.requested_at).toLocaleDateString('fr-FR', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' })
-          : '—';
-        row.appendChild(dateEl);
+      const dateEl = document.createElement('div'); dateEl.className = 'edit-request-date';
+      dateEl.textContent = req.requested_at ? new Date(req.requested_at).toLocaleDateString('fr-FR', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }) : '—';
+      row.appendChild(dateEl);
 
-        const statusEl = document.createElement('div');
-        statusEl.className = 'edit-request-status ' + (req.status || 'pending');
-        statusEl.textContent = statusLabels[req.status] || req.status;
-        row.appendChild(statusEl);
+      const statusEl = document.createElement('div');
+      statusEl.className   = 'edit-request-status ' + (req.status || 'pending');
+      statusEl.textContent = statusLabels[req.status] || req.status;
+      row.appendChild(statusEl);
 
-        list.appendChild(row);
-      });
+      list.appendChild(row);
+    });
   }
 
   // ============================================================
-  // INIT TABS
+  // TABS
   // ============================================================
   function initEditTabs() {
     document.querySelectorAll('.edit-tab').forEach(tab => {
@@ -1930,11 +1889,9 @@ document.addEventListener('DOMContentLoaded', function() {
         document.querySelectorAll('.edit-tab').forEach(t => t.classList.remove('active'));
         document.querySelectorAll('.edit-tab-pane').forEach(p => p.classList.remove('active'));
         this.classList.add('active');
-        const pane = document.getElementById('edit-tab-' + this.dataset.tab);
-        if (pane) pane.classList.add('active');
+        document.getElementById('edit-tab-' + this.dataset.tab)?.classList.add('active');
       };
     });
-    // Reset sur premier onglet
     document.querySelectorAll('.edit-tab')[0]?.click();
   }
 
@@ -1957,32 +1914,32 @@ document.addEventListener('DOMContentLoaded', function() {
     const btn = document.getElementById('edit-submit-infos');
     if (!btn) return;
 
+    // ✅ Réassigner onclick à chaque ouverture (pas de doublons)
     btn.onclick = async function () {
       const token = getToken();
-      btn.disabled = true;
+      btn.disabled    = true;
       btn.textContent = 'Enregistrement…';
 
-      // ✅ asking_new_price = true seulement si le champ est rempli
-      const newPriceRaw   = document.getElementById('edit-new-price')?.value?.trim();
-      const newPriceCents = newPriceRaw ? Math.round(parseFloat(newPriceRaw) * 100) : null;
-      const askingNewPrice = !!newPriceCents;
+      const newPriceRaw    = (document.getElementById('edit-new-price')?.value || '').trim();
+      const newPriceCents  = newPriceRaw ? Math.round(parseFloat(newPriceRaw) * 100) : 0;
+      const askingNewPrice = newPriceCents > 0;
 
       const payload = {
-        course_id:           courseId,
-        theme:               document.getElementById('edit-theme')?.value?.trim()        || '',
-        title:               document.getElementById('edit-title')?.value?.trim()        || '',
-        cover_url:           document.getElementById('edit-cover-url')?.value?.trim()    || '',
-        icon_url:            document.getElementById('edit-icon-url')?.value?.trim()     || '',
-        description_short:   document.getElementById('edit-desc-short')?.value?.trim()  || '',
-        description_long:    document.getElementById('edit-desc-long')?.value?.trim()   || '',
-        trainer_bio:         document.getElementById('edit-trainer-bio')?.value?.trim() || '',
-        duration_minutes:    parseInt(document.getElementById('edit-duration')?.value)   || 0,
-        modules_count:       parseInt(document.getElementById('edit-modules-count')?.value) || 0,
-        skills:              _editSkills,
-        faq:                 _editFaq,
+        course_id:            courseId,
+        theme:                (document.getElementById('edit-theme')?.value        || '').trim(),
+        title:                (document.getElementById('edit-title')?.value        || '').trim(),
+        cover_url:            (document.getElementById('edit-cover-url')?.value    || '').trim(),
+        icon_url:             (document.getElementById('edit-icon-url')?.value     || '').trim(),
+        description_short:    (document.getElementById('edit-desc-short')?.value   || '').trim(),
+        description_long:     (document.getElementById('edit-desc-long')?.value    || '').trim(),
+        trainer_bio:          (document.getElementById('edit-trainer-bio')?.value  || '').trim(),
+        duration_minutes:     parseInt(document.getElementById('edit-duration')?.value)      || 0,
+        modules_count:        parseInt(document.getElementById('edit-modules-count')?.value) || 0,
+        skills:               _editSkills,
+        faq:                  _editFaq,
         freelance_profile_id: _currentCourse?.freelancer_profile_id || null,
-        new_price_cents:     newPriceCents || 0,
-        asking_new_price:    askingNewPrice,
+        new_price_cents:      newPriceCents,
+        asking_new_price:     askingNewPrice,
       };
 
       try {
@@ -1991,24 +1948,32 @@ document.addEventListener('DOMContentLoaded', function() {
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
           body: JSON.stringify(payload),
         });
-        if (!res.ok) throw new Error('Erreur serveur (' + res.status + ')');
+
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({}));
+          throw new Error(errBody?.message || 'Erreur serveur (' + res.status + ')');
+        }
+
+        // ✅ Refresh localStorage
+        await refreshAuth();
 
         document.getElementById('edit-course-title-display').textContent = payload.title || '—';
 
         if (askingNewPrice) {
-          // ✅ Message clair : seul le prix nécessite validation
+          // ✅ Popup avec message précis : seul le prix nécessite validation
           document.getElementById('popup-request-sent-msg').textContent =
-            'Vos modifications sont en ligne. Votre demande de changement de prix a bien été enregistrée et sera traitée prochainement par notre équipe.';
+            'Vos modifications sont désormais en ligne. Votre demande de changement de prix a bien été enregistrée et sera traitée prochainement par notre équipe.';
           document.getElementById('popup-request-sent')?.classList.add('active');
           document.getElementById('edit-new-price').value = '';
         } else {
-          // ✅ Toast simple pour les modifs sans prix
-          showToastEdit('✅ Modifications enregistrées et en ligne !');
+          // ✅ Toast visible
+          showToastEdit('✅ Modifications enregistrées et en ligne !', 3500);
         }
+
       } catch(e) {
-        showToastEdit('❌ Erreur : ' + e.message);
+        showToastEdit('❌ Erreur : ' + e.message, 5000);
       } finally {
-        btn.disabled = false;
+        btn.disabled    = false;
         btn.textContent = '💾 Enregistrer les modifications';
       }
     };
@@ -2017,117 +1982,62 @@ document.addEventListener('DOMContentLoaded', function() {
   // ============================================================
   // ACTIONS STRUCTURE
   // ============================================================
-
-  // Sauvegarder titre chapitre (direct)
   async function saveChapterTitle(chapterId, newTitle) {
     if (!newTitle.trim()) return;
     const token = getToken();
     try {
-      await fetch(REQUEST_CHANGE_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-        body: JSON.stringify({
-          course_id:   _currentCourse.id,
-          change_type: 'update_chapter_title',
-          target_id:   String(chapterId),
-          payload:     JSON.stringify({ title: newTitle }),
-        }),
-      });
+      const res = await fetch(REQUEST_CHANGE_URL, { method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+token}, body: JSON.stringify({ course_id: _currentCourse.id, change_type:'update_chapter_title', target_id: String(chapterId), payload: JSON.stringify({ title: newTitle }) }) });
+      if (!res.ok) throw new Error();
       showToastEdit('✅ Titre du chapitre mis à jour !');
-    } catch(e) { showToastEdit('❌ Erreur mise à jour titre'); }
+    } catch { showToastEdit('❌ Erreur mise à jour titre'); }
   }
 
-  // Sauvegarder titre module (direct)
   async function saveModuleTitle(moduleId, newTitle) {
     if (!newTitle.trim()) return;
     const token = getToken();
     try {
-      await fetch(REQUEST_CHANGE_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-        body: JSON.stringify({
-          course_id:   _currentCourse.id,
-          change_type: 'update_module_title',
-          target_id:   String(moduleId),
-          payload:     JSON.stringify({ title: newTitle }),
-        }),
-      });
+      const res = await fetch(REQUEST_CHANGE_URL, { method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+token}, body: JSON.stringify({ course_id: _currentCourse.id, change_type:'update_module_title', target_id: String(moduleId), payload: JSON.stringify({ title: newTitle }) }) });
+      if (!res.ok) throw new Error();
       showToastEdit('✅ Titre du module mis à jour !');
-    } catch(e) { showToastEdit('❌ Erreur mise à jour titre'); }
+    } catch { showToastEdit('❌ Erreur mise à jour titre'); }
   }
 
-  // Demande suppression chapitre
   async function requestDeleteChapter(ch) {
     if (!confirm(`Demander la suppression du chapitre "${ch.title}" ?`)) return;
     const token = getToken();
     try {
-      await fetch(REQUEST_CHANGE_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-        body: JSON.stringify({
-          course_id:   _currentCourse.id,
-          change_type: 'delete_chapter',
-          target_id:   String(ch.id),
-          target_type: 'chapter',
-          payload:     JSON.stringify({ title: ch.title }),
-        }),
-      });
-      _pendingRequests.push({ change_type: 'delete_chapter', target_id: String(ch.id), target_type: 'chapter', status: 'pending', payload: JSON.stringify({ title: ch.title }), requested_at: Date.now() });
-      fillStructureTab();
-      fillDemandesTab();
+      const res = await fetch(REQUEST_CHANGE_URL, { method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+token}, body: JSON.stringify({ course_id: _currentCourse.id, change_type:'delete_chapter', target_id: String(ch.id), target_type:'chapter', payload: JSON.stringify({ title: ch.title }) }) });
+      if (!res.ok) throw new Error();
+      _pendingRequests.push({ change_type:'delete_chapter', target_id: String(ch.id), target_type:'chapter', status:'pending', payload: JSON.stringify({ title: ch.title }), requested_at: Date.now() });
+      fillStructureTab(); fillDemandesTab();
       showPopupRequestSent('Votre demande de suppression du chapitre a bien été enregistrée.');
-    } catch(e) { showToastEdit('❌ Erreur envoi demande'); }
+    } catch { showToastEdit('❌ Erreur envoi demande'); }
   }
 
-  // Demande suppression module
   async function requestDeleteModule(mod, ch) {
     if (!confirm(`Demander la suppression du module "${mod.title}" ?`)) return;
     const token = getToken();
     try {
-      await fetch(REQUEST_CHANGE_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-        body: JSON.stringify({
-          course_id:   _currentCourse.id,
-          change_type: 'delete_module',
-          target_id:   String(mod.id),
-          target_type: 'module',
-          payload:     JSON.stringify({ title: mod.title, chapter_title: ch.title }),
-        }),
-      });
-      _pendingRequests.push({ change_type: 'delete_module', target_id: String(mod.id), target_type: 'module', status: 'pending', payload: JSON.stringify({ title: mod.title }), requested_at: Date.now() });
-      fillStructureTab();
-      fillDemandesTab();
+      const res = await fetch(REQUEST_CHANGE_URL, { method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+token}, body: JSON.stringify({ course_id: _currentCourse.id, change_type:'delete_module', target_id: String(mod.id), target_type:'module', payload: JSON.stringify({ title: mod.title, chapter_title: ch.title }) }) });
+      if (!res.ok) throw new Error();
+      _pendingRequests.push({ change_type:'delete_module', target_id: String(mod.id), target_type:'module', status:'pending', payload: JSON.stringify({ title: mod.title }), requested_at: Date.now() });
+      fillStructureTab(); fillDemandesTab();
       showPopupRequestSent('Votre demande de suppression du module a bien été enregistrée.');
-    } catch(e) { showToastEdit('❌ Erreur envoi demande'); }
+    } catch { showToastEdit('❌ Erreur envoi demande'); }
   }
 
-  // Demande ajout module — ouvre une mini popup inline
   function requestAddModule(ch) {
     const title = prompt('Titre du nouveau module :');
     if (!title?.trim()) return;
     const token = getToken();
-    fetch(REQUEST_CHANGE_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-      body: JSON.stringify({
-        course_id:        _currentCourse.id,
-        change_type:      'add_module',
-        target_id:        String(ch.id),
-        target_type:      'chapter',
-        payload:          JSON.stringify({ module_title: title.trim(), chapter_title: ch.title, chapter_temp_id: ch.chapter_temp_id }),
-      }),
-    }).then(res => {
-      if (!res.ok) throw new Error();
-      _pendingRequests.push({ change_type: 'add_module', target_id: String(ch.id), target_type: 'chapter', status: 'pending', payload: JSON.stringify({ module_title: title.trim() }), requested_at: Date.now() });
-
-      // Afficher le module grisé dans la liste
-      const fakeModule = { id: 'pending-' + Date.now(), title: title.trim(), _pendingAdd: true, chapter_temp_id: ch.chapter_temp_id, order_index: 999 };
-      _currentModules.push(fakeModule);
-      fillStructureTab();
-      fillDemandesTab();
-      showPopupRequestSent('Votre demande d\'ajout de module a bien été enregistrée. Elle sera traitée prochainement.');
-    }).catch(() => showToastEdit('❌ Erreur envoi demande'));
+    fetch(REQUEST_CHANGE_URL, { method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+token}, body: JSON.stringify({ course_id: _currentCourse.id, change_type:'add_module', target_id: String(ch.id), target_type:'chapter', payload: JSON.stringify({ module_title: title.trim(), chapter_title: ch.title, chapter_temp_id: ch.chapter_temp_id }) }) })
+      .then(res => {
+        if (!res.ok) throw new Error();
+        _pendingRequests.push({ change_type:'add_module', target_id: String(ch.id), target_type:'chapter', status:'pending', payload: JSON.stringify({ module_title: title.trim() }), requested_at: Date.now() });
+        _currentModules.push({ id:'pending-'+Date.now(), title: title.trim(), _pendingAdd: true, chapter_temp_id: ch.chapter_temp_id, order_index: 999 });
+        fillStructureTab(); fillDemandesTab();
+        showPopupRequestSent('Votre demande d\'ajout de module a bien été enregistrée.');
+      }).catch(() => showToastEdit('❌ Erreur envoi demande'));
   }
 
   // ============================================================
@@ -2135,7 +2045,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // ============================================================
   function openReplaceVideoPopup(moduleId) {
     document.getElementById('replace-video-module-id').value = moduleId;
-    document.getElementById('replace-video-new-uri').value = '';
+    document.getElementById('replace-video-new-uri').value   = '';
     document.getElementById('replace-status-text').textContent = '';
     document.getElementById('replace-progress-bar').style.display = 'none';
     document.getElementById('replace-video-submit-btn').disabled = true;
@@ -2145,98 +2055,56 @@ document.addEventListener('DOMContentLoaded', function() {
   function initReplaceVideoUpload(courseId) {
     const fileInput = document.getElementById('replace-video-file');
     const submitBtn = document.getElementById('replace-video-submit-btn');
-    if (!fileInput) return;
+    if (!fileInput || fileInput._editBound) return;
+    fileInput._editBound = true;
 
     fileInput.addEventListener('change', async function () {
-      const file = this.files[0];
-      if (!file) return;
-      const token = getToken();
+      const file = this.files[0]; if (!file) return;
+      const token    = getToken();
       const moduleId = document.getElementById('replace-video-module-id').value;
       const statusEl = document.getElementById('replace-status-text');
-      const progressBar = document.getElementById('replace-progress-bar');
-      const progressFill = document.getElementById('replace-progress-fill');
+      const progBar  = document.getElementById('replace-progress-bar');
+      const progFill = document.getElementById('replace-progress-fill');
 
-      statusEl.textContent = 'Préparation…';
-      progressBar.style.display = 'block';
-      progressFill.style.width = '0%';
-      submitBtn.disabled = true;
+      statusEl.textContent = 'Préparation…'; progBar.style.display = 'block'; progFill.style.width = '0%'; submitBtn.disabled = true;
 
       try {
-        // Init upload Vimeo
-        const initRes = await fetch(VIMEO_UPLOAD_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-          body: JSON.stringify({ course_id: courseId, module_temp_id: 'replace-' + moduleId, file_name: file.name, file_size: file.size }),
-        });
+        const initRes = await fetch(VIMEO_UPLOAD_URL, { method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+token}, body: JSON.stringify({ course_id: courseId, module_temp_id:'replace-'+moduleId, file_name: file.name, file_size: file.size }) });
         if (!initRes.ok) throw new Error('Erreur init Vimeo');
         const { upload_link, vimeo_uri } = await initRes.json();
 
-        statusEl.textContent = 'Upload… 0%';
         let offset = 0;
         while (offset < file.size) {
           const chunk = file.slice(offset, offset + CHUNK_SIZE);
-          const res = await fetch(upload_link, {
-            method: 'PATCH',
-            headers: { 'Tus-Resumable': '1.0.0', 'Upload-Offset': String(offset), 'Content-Type': 'application/offset+octet-stream', 'Content-Length': String(chunk.size) },
-            body: chunk,
-          });
-          if (!res.ok && res.status !== 204) throw new Error('Upload échoué');
+          const r = await fetch(upload_link, { method:'PATCH', headers:{'Tus-Resumable':'1.0.0','Upload-Offset':String(offset),'Content-Type':'application/offset+octet-stream','Content-Length':String(chunk.size)}, body: chunk });
+          if (!r.ok && r.status !== 204) throw new Error('Upload échoué');
           offset += chunk.size;
-          const pct = Math.min(Math.round((offset / file.size) * 100), 99);
-          progressFill.style.width = pct + '%';
-          statusEl.textContent = 'Upload… ' + pct + '%';
+          const pct = Math.min(Math.round((offset/file.size)*100), 99);
+          progFill.style.width = pct + '%'; statusEl.textContent = 'Upload… ' + pct + '%';
         }
 
-        // Finaliser
-        await fetch(VIMEO_FINALIZE_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-          body: JSON.stringify({ vimeo_uri, module_temp_id: 'replace-' + moduleId }),
-        });
+        await fetch(VIMEO_FINALIZE_URL, { method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+token}, body: JSON.stringify({ vimeo_uri, module_temp_id:'replace-'+moduleId }) });
 
         document.getElementById('replace-video-new-uri').value = vimeo_uri;
-        progressFill.style.width = '100%';
-        statusEl.textContent = '✅ Vidéo prête — cliquez sur "Soumettre"';
-        submitBtn.disabled = false;
-      } catch(e) {
-        statusEl.textContent = '❌ ' + e.message;
-        progressFill.style.width = '100%';
-        progressFill.classList.add('error');
-      }
+        progFill.style.width = '100%'; statusEl.textContent = '✅ Vidéo prête — cliquez sur "Soumettre"'; submitBtn.disabled = false;
+      } catch(e) { statusEl.textContent = '❌ ' + e.message; progFill.classList.add('error'); }
     });
 
     submitBtn.addEventListener('click', async function () {
-      const token = getToken();
+      const token    = getToken();
       const moduleId = document.getElementById('replace-video-module-id').value;
       const newUri   = document.getElementById('replace-video-new-uri').value;
       if (!newUri) return;
-
-      submitBtn.disabled = true;
-      submitBtn.textContent = 'Envoi…';
-
+      submitBtn.disabled = true; submitBtn.textContent = 'Envoi…';
       try {
-        await fetch(REQUEST_CHANGE_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-          body: JSON.stringify({
-            course_id:   _currentCourse.id,
-            change_type: 'replace_video',
-            target_id:   String(moduleId),
-            target_type: 'module',
-            payload:     JSON.stringify({ new_vimeo_uri: newUri }),
-          }),
-        });
-        _pendingRequests.push({ change_type: 'replace_video', target_id: String(moduleId), target_type: 'module', status: 'pending', payload: JSON.stringify({ new_vimeo_uri: newUri }), requested_at: Date.now() });
+        const res = await fetch(REQUEST_CHANGE_URL, { method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+token}, body: JSON.stringify({ course_id: _currentCourse.id, change_type:'replace_video', target_id: String(moduleId), target_type:'module', payload: JSON.stringify({ new_vimeo_uri: newUri }) }) });
+        if (!res.ok) throw new Error();
+        _pendingRequests.push({ change_type:'replace_video', target_id: String(moduleId), target_type:'module', status:'pending', payload: JSON.stringify({ new_vimeo_uri: newUri }), requested_at: Date.now() });
         document.getElementById('popup-replace-video')?.classList.remove('active');
-        fillStructureTab();
-        fillDemandesTab();
+        fillStructureTab(); fillDemandesTab();
         showPopupRequestSent('Votre demande de remplacement de vidéo a bien été enregistrée. L\'ancienne vidéo reste visible jusqu\'à validation.');
-      } catch(e) {
-        showToastEdit('❌ Erreur envoi demande');
-      } finally {
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Soumettre la demande';
-      }
+      } catch { showToastEdit('❌ Erreur envoi demande'); }
+      finally { submitBtn.disabled = false; submitBtn.textContent = 'Soumettre la demande'; }
     });
   }
 
@@ -2244,14 +2112,12 @@ document.addEventListener('DOMContentLoaded', function() {
   // SKILLS
   // ============================================================
   function renderEditSkills() {
-    const list = document.getElementById('edit-skills-list');
+    const list   = document.getElementById('edit-skills-list');
     const hidden = document.getElementById('edit-skills-hidden');
     if (!list) return;
     list.innerHTML = '';
     _editSkills.forEach((skill, i) => {
-      const tag = document.createElement('div');
-      tag.className = 'edit-tag-item';
-      // ✅ data-index sur le span remove uniquement
+      const tag = document.createElement('div'); tag.className = 'edit-tag-item';
       tag.innerHTML = `<span>${skill}</span><span class="edit-tag-remove" data-index="${i}">✕</span>`;
       list.appendChild(tag);
     });
@@ -2265,24 +2131,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (addBtn) addBtn.onclick = () => {
       const val = input?.value.trim();
-      if (!val || _editSkills.includes(val) || _editSkills.length >= 6) { if(input) input.value=''; return; }
-      _editSkills.push(val);
-      if (input) input.value = '';
+      if (!val || _editSkills.includes(val) || _editSkills.length >= 6) { if (input) input.value = ''; return; }
+      _editSkills.push(val); if (input) input.value = '';
       renderEditSkills();
     };
 
-    // ✅ Un seul listener sur le container, pas réattaché à chaque render
-    if (list && !list._listenerAttached) {
-      list._listenerAttached = true;
+    if (list && !list._skillListenerAttached) {
+      list._skillListenerAttached = true;
       list.addEventListener('click', e => {
         const btn = e.target.closest('.edit-tag-remove');
-        if (btn) {
-          const idx = parseInt(btn.dataset.index);
-          if (!isNaN(idx)) {
-            _editSkills.splice(idx, 1);
-            renderEditSkills();
-          }
-        }
+        if (btn) { const idx = parseInt(btn.dataset.index); if (!isNaN(idx)) { _editSkills.splice(idx, 1); renderEditSkills(); } }
       });
     }
   }
@@ -2296,13 +2154,8 @@ document.addEventListener('DOMContentLoaded', function() {
     if (!list) return;
     list.innerHTML = '';
     _editFaq.forEach((item, i) => {
-      const div = document.createElement('div');
-      div.className = 'edit-faq-item';
-      div.innerHTML = `
-        <div class="edit-faq-q">${item.question}</div>
-        <div class="edit-faq-a">${item.answer}</div>
-        <button class="edit-faq-remove" data-index="${i}">✕</button>
-      `;
+      const div = document.createElement('div'); div.className = 'edit-faq-item';
+      div.innerHTML = `<div class="edit-faq-q">${item.question}</div><div class="edit-faq-a">${item.answer}</div><button class="edit-faq-remove" data-index="${i}">✕</button>`;
       list.appendChild(div);
     });
     if (hidden) hidden.value = JSON.stringify(_editFaq);
@@ -2313,8 +2166,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const addBtn = document.getElementById('edit-faq-add-btn');
 
     if (addBtn) addBtn.onclick = () => {
-      const q = document.getElementById('edit-faq-q')?.value.trim();
-      const a = document.getElementById('edit-faq-a')?.value.trim();
+      const q = (document.getElementById('edit-faq-q')?.value || '').trim();
+      const a = (document.getElementById('edit-faq-a')?.value || '').trim();
       if (!q || !a) return;
       _editFaq.push({ question: q, answer: a });
       document.getElementById('edit-faq-q').value = '';
@@ -2322,18 +2175,11 @@ document.addEventListener('DOMContentLoaded', function() {
       renderEditFaq();
     };
 
-    // ✅ Un seul listener sur le container, pas réattaché à chaque render
-    if (list && !list._listenerAttached) {
-      list._listenerAttached = true;
+    if (list && !list._faqListenerAttached) {
+      list._faqListenerAttached = true;
       list.addEventListener('click', e => {
         const btn = e.target.closest('.edit-faq-remove');
-        if (btn) {
-          const idx = parseInt(btn.dataset.index);
-          if (!isNaN(idx)) {
-            _editFaq.splice(idx, 1);
-            renderEditFaq();
-          }
-        }
+        if (btn) { const idx = parseInt(btn.dataset.index); if (!isNaN(idx)) { _editFaq.splice(idx, 1); renderEditFaq(); } }
       });
     }
   }
@@ -2343,70 +2189,30 @@ document.addEventListener('DOMContentLoaded', function() {
   // ============================================================
   function initImageUpload(fileInputId, previewId, hiddenId, statusId) {
     const fileInput = document.getElementById(fileInputId);
-    if (!fileInput) return;
+    if (!fileInput || fileInput._editBound) return;
+    fileInput._editBound = true;
     fileInput.addEventListener('change', async function () {
-      const file = this.files[0];
-      if (!file) return;
+      const file = this.files[0]; if (!file) return;
       const token    = getToken();
       const statusEl = document.getElementById(statusId);
       if (statusEl) statusEl.textContent = '⏳ Upload…';
-
-      const fd = new FormData();
-      fd.append('file', file);
+      const fd = new FormData(); fd.append('file', file);
       try {
-        const res  = await fetch(UPLOAD_URL, { method: 'POST', headers: token ? { Authorization: 'Bearer ' + token } : {}, body: fd });
+        const res  = await fetch(UPLOAD_URL, { method:'POST', headers: token ? { Authorization:'Bearer '+token } : {}, body: fd });
         const data = await res.json();
         const url  = data?.path ? 'https://xmot-l3ir-7kuj.p7.xano.io' + data.path : null;
         if (url) {
-          const hidden  = document.getElementById(hiddenId);
-          const preview = document.getElementById(previewId);
-          if (hidden)  hidden.value       = url;
-          if (preview) { preview.src = url; preview.style.display = 'block'; }
+          const hidden = document.getElementById(hiddenId); if (hidden) hidden.value = url;
+          const prev   = document.getElementById(previewId); if (prev) { prev.src = url; prev.style.display = 'block'; }
           if (statusEl) statusEl.textContent = '✅ Uploadé';
-        } else {
-          if (statusEl) statusEl.textContent = '❌ Erreur';
-        }
+        } else { if (statusEl) statusEl.textContent = '❌ Erreur'; }
       } catch { if (statusEl) statusEl.textContent = '❌ Erreur serveur'; }
     });
   }
 
   // ============================================================
-  // ACTIONS STRUCTURE — init
+  // FERMETURE POPUPS
   // ============================================================
-  function initStructureActions(courseId) {
-    // Les listeners sont attachés dans fillStructureTab / buildEditModuleEl
-    // Cette fonction est réservée pour des listeners globaux si besoin
-  }
-
-  // ============================================================
-  // HELPERS
-  // ============================================================
-  function setValue(id, val) {
-    const el = document.getElementById(id);
-    if (el) el.value = val;
-  }
-
-  function showToastEdit(msg) {
-    // Réutilise le toast existant ou en crée un
-    let t = document.getElementById('builder-toast') || document.getElementById('edit-toast');
-    if (!t) {
-      t = document.createElement('div');
-      t.id = 'edit-toast';
-      t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#111112;color:#fff;padding:10px 22px;border-radius:10px;font-family:DM Sans,sans-serif;font-size:.82rem;font-weight:500;z-index:99999;opacity:0;pointer-events:none;transition:opacity .3s;white-space:nowrap;';
-      document.body.appendChild(t);
-    }
-    t.textContent = msg;
-    t.style.opacity = '1';
-    setTimeout(() => { t.style.opacity = '0'; }, 2800);
-  }
-
-  function showPopupRequestSent(msg) {
-    const msgEl = document.getElementById('popup-request-sent-msg');
-    if (msgEl) msgEl.textContent = msg;
-    document.getElementById('popup-request-sent')?.classList.add('active');
-  }
-
-  // Fermeture popups au clic extérieur
   document.addEventListener('DOMContentLoaded', function () {
     ['popup-pending-validation','popup-changes-pending','popup-replace-video','popup-request-sent'].forEach(id => {
       const el = document.getElementById(id);
