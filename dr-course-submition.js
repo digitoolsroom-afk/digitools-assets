@@ -1530,6 +1530,11 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 });
 
+
+
+
+
+
 // ============================================================
 // ÉDITION COURS PUBLIÉ — openCourseEdit()
 // À ajouter à la fin du grand script dr-course.js
@@ -1570,24 +1575,7 @@ document.addEventListener('DOMContentLoaded', function() {
       return;
     }
 
-    // Cas 2 : vérifier les demandes en attente
-    let pendingRequests = [];
-    try {
-      const res = await fetch(`${GET_REQUESTS_URL}?course_id=${item.id}`, {
-        headers: { 'Authorization': 'Bearer ' + token }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        pendingRequests = (data.requests || []).filter(r => r.status === 'pending');
-      }
-    } catch(e) { console.warn('[edit] get requests failed:', e); }
-
-    if (pendingRequests.length > 0) {
-      document.getElementById('popup-changes-pending')?.classList.add('active');
-      return;
-    }
-
-    // Cas 3 : charger et ouvrir la section édition
+    // Cas 2 : charger et ouvrir la section édition
     await loadEditSection(item.id);
   };
 
@@ -1599,15 +1587,21 @@ document.addEventListener('DOMContentLoaded', function() {
     showToastEdit('⏳ Chargement…');
 
     try {
-      // Charger les données du cours
-      const [courseRes, requestsRes] = await Promise.all([
-        fetch(`${MODIFY_COURSE_URL}?course_id=${courseId}`, { headers: { 'Authorization': 'Bearer ' + token } }),
-        fetch(`${GET_REQUESTS_URL}?course_id=${courseId}`,  { headers: { 'Authorization': 'Bearer ' + token } })
-      ]);
-
+      // Charger les données du cours + demandes en attente
+      const courseRes = await fetch(`${MODIFY_COURSE_URL}?course_id=${courseId}`, {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
       if (!courseRes.ok) throw new Error('Erreur chargement cours');
-      const courseData    = await courseRes.json();
-      const requestsData  = requestsRes.ok ? await requestsRes.json() : { requests: [] };
+      const courseData = await courseRes.json();
+
+      // Charger les demandes en parallèle (silencieux si endpoint pas dispo)
+      let requestsData = { requests: [] };
+      try {
+        const requestsRes = await fetch(`${GET_REQUESTS_URL}?course_id=${courseId}`, {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (requestsRes.ok) requestsData = await requestsRes.json();
+      } catch(e) { console.warn('[edit] get_requests failed:', e); }
 
       _currentCourse   = courseData.course;
       _currentChapters = (courseData.chapters || []).sort((a,b) => a.order_index - b.order_index);
@@ -1705,6 +1699,23 @@ document.addEventListener('DOMContentLoaded', function() {
     const list = document.getElementById('edit-chapters-list');
     if (!list) return;
     list.innerHTML = '';
+
+    // ✅ Si demandes pending → bloquer l'onglet structure avec message
+    const hasPending = _pendingRequests.some(r => r.status === 'pending');
+    if (hasPending) {
+      list.innerHTML = `
+        <div style="background:#fff7ed;border:1.5px solid #fed7aa;border-radius:14px;padding:28px 24px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:12px;">
+          <div style="font-size:2rem;">🔒</div>
+          <div style="font-size:.95rem;font-weight:700;color:#111112;">Structure temporairement verrouillée</div>
+          <div style="font-size:.82rem;color:#6b7280;line-height:1.6;max-width:420px;">
+            Vous avez des demandes de modification structurelle en attente de validation.<br>
+            La structure sera à nouveau modifiable une fois que toutes vos demandes auront été traitées.<br><br>
+            Consultez l'onglet <strong>Mes demandes</strong> pour suivre leur état.
+          </div>
+        </div>
+      `;
+      return;
+    }
 
     _currentChapters.forEach((ch, ci) => {
       const modules = _currentModules
@@ -1951,25 +1962,27 @@ document.addEventListener('DOMContentLoaded', function() {
       btn.disabled = true;
       btn.textContent = 'Enregistrement…';
 
-      const newPriceRaw = document.getElementById('edit-new-price')?.value?.trim();
+      // ✅ asking_new_price = true seulement si le champ est rempli
+      const newPriceRaw   = document.getElementById('edit-new-price')?.value?.trim();
       const newPriceCents = newPriceRaw ? Math.round(parseFloat(newPriceRaw) * 100) : null;
+      const askingNewPrice = !!newPriceCents;
 
       const payload = {
-        course_id:         courseId,
-        theme:             document.getElementById('edit-theme')?.value?.trim()       || '',
-        title:             document.getElementById('edit-title')?.value?.trim()       || '',
-        cover_url:         document.getElementById('edit-cover-url')?.value?.trim()   || '',
-        icon_url:          document.getElementById('edit-icon-url')?.value?.trim()    || '',
-        description_short: document.getElementById('edit-desc-short')?.value?.trim() || '',
-        description_long:  document.getElementById('edit-desc-long')?.value?.trim()  || '',
-        trainer_bio:       document.getElementById('edit-trainer-bio')?.value?.trim()|| '',
-        duration_minutes:  parseInt(document.getElementById('edit-duration')?.value)  || 0,
-        modules_count:     parseInt(document.getElementById('edit-modules-count')?.value) || 0,
-        skills:            _editSkills,
-        faq:               _editFaq,
+        course_id:           courseId,
+        theme:               document.getElementById('edit-theme')?.value?.trim()        || '',
+        title:               document.getElementById('edit-title')?.value?.trim()        || '',
+        cover_url:           document.getElementById('edit-cover-url')?.value?.trim()    || '',
+        icon_url:            document.getElementById('edit-icon-url')?.value?.trim()     || '',
+        description_short:   document.getElementById('edit-desc-short')?.value?.trim()  || '',
+        description_long:    document.getElementById('edit-desc-long')?.value?.trim()   || '',
+        trainer_bio:         document.getElementById('edit-trainer-bio')?.value?.trim() || '',
+        duration_minutes:    parseInt(document.getElementById('edit-duration')?.value)   || 0,
+        modules_count:       parseInt(document.getElementById('edit-modules-count')?.value) || 0,
+        skills:              _editSkills,
+        faq:                 _editFaq,
         freelance_profile_id: _currentCourse?.freelancer_profile_id || null,
-        new_price_cents:   newPriceCents,
-        asking_new_price:  !!newPriceCents,
+        new_price_cents:     newPriceCents || 0,
+        asking_new_price:    askingNewPrice,
       };
 
       try {
@@ -1981,12 +1994,16 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!res.ok) throw new Error('Erreur serveur (' + res.status + ')');
 
         document.getElementById('edit-course-title-display').textContent = payload.title || '—';
-        showToastEdit('✅ Informations mises à jour !');
-        if (newPriceCents) {
+
+        if (askingNewPrice) {
+          // ✅ Message clair : seul le prix nécessite validation
           document.getElementById('popup-request-sent-msg').textContent =
-            'Vos informations ont été enregistrées. La demande de changement de prix sera traitée prochainement.';
+            'Vos modifications sont en ligne. Votre demande de changement de prix a bien été enregistrée et sera traitée prochainement par notre équipe.';
           document.getElementById('popup-request-sent')?.classList.add('active');
           document.getElementById('edit-new-price').value = '';
+        } else {
+          // ✅ Toast simple pour les modifs sans prix
+          showToastEdit('✅ Modifications enregistrées et en ligne !');
         }
       } catch(e) {
         showToastEdit('❌ Erreur : ' + e.message);
@@ -2234,6 +2251,7 @@ document.addEventListener('DOMContentLoaded', function() {
     _editSkills.forEach((skill, i) => {
       const tag = document.createElement('div');
       tag.className = 'edit-tag-item';
+      // ✅ data-index sur le span remove uniquement
       tag.innerHTML = `<span>${skill}</span><span class="edit-tag-remove" data-index="${i}">✕</span>`;
       list.appendChild(tag);
     });
@@ -2253,12 +2271,20 @@ document.addEventListener('DOMContentLoaded', function() {
       renderEditSkills();
     };
 
-    if (list) list.addEventListener('click', e => {
-      if (e.target.classList.contains('edit-tag-remove')) {
-        _editSkills.splice(parseInt(e.target.dataset.index), 1);
-        renderEditSkills();
-      }
-    });
+    // ✅ Un seul listener sur le container, pas réattaché à chaque render
+    if (list && !list._listenerAttached) {
+      list._listenerAttached = true;
+      list.addEventListener('click', e => {
+        const btn = e.target.closest('.edit-tag-remove');
+        if (btn) {
+          const idx = parseInt(btn.dataset.index);
+          if (!isNaN(idx)) {
+            _editSkills.splice(idx, 1);
+            renderEditSkills();
+          }
+        }
+      });
+    }
   }
 
   // ============================================================
@@ -2283,7 +2309,7 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   function initFaqEdit() {
-    const list = document.getElementById('edit-faq-list');
+    const list   = document.getElementById('edit-faq-list');
     const addBtn = document.getElementById('edit-faq-add-btn');
 
     if (addBtn) addBtn.onclick = () => {
@@ -2296,12 +2322,20 @@ document.addEventListener('DOMContentLoaded', function() {
       renderEditFaq();
     };
 
-    if (list) list.addEventListener('click', e => {
-      if (e.target.classList.contains('edit-faq-remove')) {
-        _editFaq.splice(parseInt(e.target.dataset.index), 1);
-        renderEditFaq();
-      }
-    });
+    // ✅ Un seul listener sur le container, pas réattaché à chaque render
+    if (list && !list._listenerAttached) {
+      list._listenerAttached = true;
+      list.addEventListener('click', e => {
+        const btn = e.target.closest('.edit-faq-remove');
+        if (btn) {
+          const idx = parseInt(btn.dataset.index);
+          if (!isNaN(idx)) {
+            _editFaq.splice(idx, 1);
+            renderEditFaq();
+          }
+        }
+      });
+    }
   }
 
   // ============================================================
