@@ -1604,9 +1604,6 @@ document.addEventListener('DOMContentLoaded', function() {
       const meData = await res.json();
       const cur = JSON.parse(localStorage.getItem('auth') || '{}');
       localStorage.setItem('auth', JSON.stringify(Object.assign({}, cur, meData)));
-      if (typeof window.renderPublishedSection === 'function') {
-        window.renderPublishedSection(meData?.freelance?.course_published || []);
-      }
     } catch(e) { console.warn('[edit] refreshAuth failed:', e); }
   }
 
@@ -1775,24 +1772,45 @@ document.addEventListener('DOMContentLoaded', function() {
       card.appendChild(header);
 
       const modList = document.createElement('div'); modList.className = 'edit-modules-list';
-      modules.forEach((mod, mi) => modList.appendChild(buildEditModuleEl(mod, mi, ch)));
 
-      const addModBtn = document.createElement('button'); addModBtn.className = 'edit-btn-add-module';
-      addModBtn.textContent = '+ Demander l\'ajout d\'un module';
-      addModBtn.addEventListener('click', () => requestAddModule(ch));
-      modList.appendChild(addModBtn);
+      const REQUIRED_TITLES = ['Présentation de la formation', 'Présentation du formateur', 'Plan de la formation'];
+
+      if (ci === 0) {
+        // Chapitre 0 : modules obligatoires non modifiables, bonus entre mod1 et Plan
+        const mod0    = modules.find(m => m.order_index === 0);
+        const mod1    = modules.find(m => m.order_index === 1);
+        const lastMod = modules.find(m => m.title === 'Plan de la formation') || modules[modules.length - 1];
+        const bonus   = modules.filter(m => !REQUIRED_TITLES.includes(m.title));
+
+        if (mod0)    modList.appendChild(buildEditModuleEl(mod0, 0, ch, true));
+        if (mod1)    modList.appendChild(buildEditModuleEl(mod1, 1, ch, true));
+        bonus.forEach((mod, bi) => modList.appendChild(buildEditModuleEl(mod, bi + 2, ch, false)));
+
+        const addModBtn = document.createElement('button'); addModBtn.className = 'edit-btn-add-module';
+        addModBtn.textContent = '+ Demander l\'ajout d\'un module bonus';
+        addModBtn.addEventListener('click', () => requestAddModule(ch));
+        modList.appendChild(addModBtn);
+
+        if (lastMod) modList.appendChild(buildEditModuleEl(lastMod, modules.length - 1, ch, true));
+      } else {
+        modules.forEach((mod, mi) => modList.appendChild(buildEditModuleEl(mod, mi, ch, false)));
+        const addModBtn = document.createElement('button'); addModBtn.className = 'edit-btn-add-module';
+        addModBtn.textContent = '+ Demander l\'ajout d\'un module';
+        addModBtn.addEventListener('click', () => requestAddModule(ch));
+        modList.appendChild(addModBtn);
+      }
 
       card.appendChild(modList);
       list.appendChild(card);
     });
   }
 
-  function buildEditModuleEl(mod, mi, ch) {
+  function buildEditModuleEl(mod, mi, ch, isRequired) {
     const modRequest   = _pendingRequests.find(r => r.target_id === String(mod.id) && r.target_type === 'module');
     const isPendingAdd = mod._pendingAdd === true;
 
     const item = document.createElement('div');
-    item.className = 'edit-module-item' + (isPendingAdd ? ' pending-add' : '');
+    item.className = 'edit-module-item' + (isPendingAdd ? ' pending-add' : '') + (isRequired ? ' is-required' : '');
 
     const num = document.createElement('div'); num.className = 'edit-module-num'; num.textContent = mi + 1;
     item.appendChild(num);
@@ -1800,9 +1818,16 @@ document.addEventListener('DOMContentLoaded', function() {
     const titleInput = document.createElement('input');
     titleInput.className   = 'edit-module-title-input';
     titleInput.value       = mod.title || '';
-    titleInput.disabled    = isPendingAdd;
+    // Obligatoire = titre non modifiable
+    titleInput.disabled    = isPendingAdd || isRequired;
     titleInput.placeholder = 'Titre du module…';
     item.appendChild(titleInput);
+
+    // Badge obligatoire
+    if (isRequired) {
+      const b = document.createElement('span'); b.className = 'edit-request-badge pending';
+      b.textContent = '🔒 Obligatoire'; item.appendChild(b);
+    }
 
     if (modRequest) {
       const b = document.createElement('span');
@@ -1817,18 +1842,24 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const actions = document.createElement('div'); actions.className = 'edit-module-actions';
     if (!isPendingAdd) {
-      const saveBtn = document.createElement('button'); saveBtn.className = 'edit-btn-save-module';
-      saveBtn.textContent = '💾 Titre';
-      saveBtn.addEventListener('click', () => saveModuleTitle(mod.id, titleInput.value));
-      actions.appendChild(saveBtn);
+      // Titre modifiable seulement si pas obligatoire
+      if (!isRequired) {
+        const saveBtn = document.createElement('button'); saveBtn.className = 'edit-btn-save-module';
+        saveBtn.textContent = '💾 Titre';
+        saveBtn.addEventListener('click', () => saveModuleTitle(mod.id, titleInput.value));
+        actions.appendChild(saveBtn);
+      }
 
+      // Remplacement vidéo disponible pour tous (obligatoire ou non)
       if (!modRequest || modRequest.change_type !== 'replace_video') {
         const replBtn = document.createElement('button'); replBtn.className = 'edit-btn-replace-video';
         replBtn.textContent = '🎬 Remplacer vidéo';
         replBtn.addEventListener('click', () => openReplaceVideoPopup(mod.id));
         actions.appendChild(replBtn);
       }
-      if (!modRequest || modRequest.change_type !== 'delete_module') {
+
+      // Suppression uniquement pour les modules non obligatoires
+      if (!isRequired && (!modRequest || modRequest.change_type !== 'delete_module')) {
         const delBtn = document.createElement('button'); delBtn.className = 'edit-btn-delete-module';
         delBtn.textContent = '🗑';
         delBtn.addEventListener('click', () => requestDeleteModule(mod, ch));
@@ -1954,20 +1985,22 @@ document.addEventListener('DOMContentLoaded', function() {
           throw new Error(errBody?.message || 'Erreur serveur (' + res.status + ')');
         }
 
-        // ✅ Refresh localStorage
+        // ✅ Refresh localStorage puis reload page pour mettre à jour toutes les infos
         await refreshAuth();
 
-        document.getElementById('edit-course-title-display').textContent = payload.title || '—';
-
         if (askingNewPrice) {
-          // ✅ Popup avec message précis : seul le prix nécessite validation
+          // Popup prix : on recharge après fermeture
           document.getElementById('popup-request-sent-msg').textContent =
             'Vos modifications sont désormais en ligne. Votre demande de changement de prix a bien été enregistrée et sera traitée prochainement par notre équipe.';
-          document.getElementById('popup-request-sent')?.classList.add('active');
+          const popup = document.getElementById('popup-request-sent');
+          popup?.classList.add('active');
           document.getElementById('edit-new-price').value = '';
+          // Recharger quand l'utilisateur ferme la popup
+          popup?.querySelector('button')?.addEventListener('click', () => location.reload(), { once: true });
         } else {
-          // ✅ Toast visible
-          showToastEdit('✅ Modifications enregistrées et en ligne !', 3500);
+          // ✅ Toast puis reload
+          showToastEdit('✅ Modifications enregistrées et en ligne !', 1500);
+          setTimeout(() => location.reload(), 1600);
         }
 
       } catch(e) {
