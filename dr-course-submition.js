@@ -983,20 +983,37 @@ window.initCourseBuilder = function () {
       progressFill.style.width = '85%';
       mod.vimeo_uri = vimeo_uri; mod.upload_status = 'checking'; setPill(pill, mod);
       await pollVimeoStatus(vimeo_uri, mod.module_temp_id, statusText, progressFill, mod, ch, zone, pill);
-      mod.upload_status = 'uploaded'; setPill(pill, mod); refreshChapterMeta(ch._id);
-      zone.innerHTML = ''; zone.classList.add('has-video');
-      const newFileInput = document.createElement('input'); newFileInput.type='file'; newFileInput.accept='video/*'; newFileInput.style.display='none'; zone.appendChild(newFileInput);
-      zone.appendChild(buildPlayer(vimeo_uri));
-      const replBtn = document.createElement('button'); replBtn.className='upload-file-btn'; replBtn.style.cssText='font-size:.72rem;padding:6px 12px;margin-top:6px;width:100%;'; replBtn.textContent='↩️ Remplacer la vidéo'; replBtn.addEventListener('click',()=>newFileInput.click()); zone.appendChild(replBtn);
-      newFileInput.addEventListener('change', () => {
-        const file = newFileInput.files[0]; if (!file) return;
-        const oldUri = mod.vimeo_uri; if (oldUri) vimeoDelete(oldUri);
-        mod.vimeo_uri=null; mod.upload_status='idle';
-        zone.innerHTML=''; zone.classList.remove('has-video');
-        const freshZone=buildUploadZone(mod,ch,pill); while(freshZone.firstChild) zone.appendChild(freshZone.firstChild);
-        const freshInput=zone.querySelector('input[type=file]');
-        if(freshInput){const dt=new DataTransfer();dt.items.add(file);freshInput.files=dt.files;freshInput.dispatchEvent(new Event('change'));}
+      mod.upload_status = 'uploaded'; refreshChapterMeta(ch._id);
+
+      // ✅ FIX référence périmée : après un render() pendant l'upload,
+      // zone et pill peuvent pointer vers des éléments hors DOM.
+      // On retrouve le bon élément via data-module-id.
+      const liveItem = document.querySelector(`[data-module-id="${mod._id}"]`);
+      const liveZone = liveItem ? liveItem.querySelector('.upload-zone') : zone;
+      const livePills = liveItem ? liveItem.querySelectorAll('.module-status-pill') : [pill];
+
+      // Mettre à jour tous les badges de statut du module
+      livePills.forEach(p => {
+        if (!p.classList.contains('status-required')) setPill(p, mod);
       });
+      // Mettre aussi à jour le pill original au cas où
+      if (!pill.classList.contains('status-required')) setPill(pill, mod);
+
+      if (liveZone) {
+        liveZone.innerHTML = ''; liveZone.classList.add('has-video');
+        const newFileInput = document.createElement('input'); newFileInput.type='file'; newFileInput.accept='video/*'; newFileInput.style.display='none'; liveZone.appendChild(newFileInput);
+        liveZone.appendChild(buildPlayer(vimeo_uri));
+        const replBtn = document.createElement('button'); replBtn.className='upload-file-btn'; replBtn.style.cssText='font-size:.72rem;padding:6px 12px;margin-top:6px;width:100%;'; replBtn.textContent='↩️ Remplacer la vidéo'; replBtn.addEventListener('click',()=>newFileInput.click()); liveZone.appendChild(replBtn);
+        newFileInput.addEventListener('change', () => {
+          const file = newFileInput.files[0]; if (!file) return;
+          const oldUri = mod.vimeo_uri; if (oldUri) vimeoDelete(oldUri);
+          mod.vimeo_uri=null; mod.upload_status='idle';
+          liveZone.innerHTML=''; liveZone.classList.remove('has-video');
+          const freshZone=buildUploadZone(mod,ch,pill); while(freshZone.firstChild) liveZone.appendChild(freshZone.firstChild);
+          const freshInput=liveZone.querySelector('input[type=file]');
+          if(freshInput){const dt=new DataTransfer();dt.items.add(file);freshInput.files=dt.files;freshInput.dispatchEvent(new Event('change'));}
+        });
+      }
       showToast('✅ Vidéo uploadée avec succès !');
     } catch(err) {
       mod.upload_status='error'; progressFill.style.width='100%'; progressFill.classList.add('error');
