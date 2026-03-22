@@ -431,10 +431,8 @@ window.initCourseStep1 = function () {
       async function (course) {
         btn.innerHTML = '✅ Enregistré — chargement…';
 
-        // ── FIX BUG 3 : stocker l'ID du cours créé pour initCourseBuilder ──
         window._newCourseId = course.id;
 
-        // Refresh localStorage — délai 800ms pour laisser Xano commiter
         await new Promise(resolve => setTimeout(resolve, 800));
         try {
           const meRes = await fetch('https://xmot-l3ir-7kuj.p7.xano.io/api:uFugjjm6/user_full_data', {
@@ -447,7 +445,6 @@ window.initCourseStep1 = function () {
           }
         } catch(e) { console.warn('Refresh auth failed:', e); }
 
-        // Cacher step1, afficher step2 via classes CSS (résistant à Webflow)
         ['step1-root','step1-title','step1-desc'].forEach(id => {
           document.getElementById(id)?.classList.remove('is-visible');
         });
@@ -455,7 +452,6 @@ window.initCourseStep1 = function () {
           document.getElementById(id)?.classList.add('is-visible');
         });
 
-        // Laisser le navigateur redessiner step2-root avant d'appeler initCourseBuilder
         setTimeout(() => {
           if (typeof window.initCourseBuilder === 'function') window.initCourseBuilder();
           document.getElementById('step2-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -477,8 +473,6 @@ window.initCourseStep1 = function () {
 
 // ============================================================
 // dr-course-step2.js
-// NE S'INITIALISE PAS AUTOMATIQUEMENT.
-// Appelé par le routing via : window.initCourseBuilder()
 // ============================================================
 
 window.initCourseBuilder = function () {
@@ -494,13 +488,10 @@ window.initCourseBuilder = function () {
   const auth     = JSON.parse(localStorage.getItem('auth') || 'null');
   const token    = auth?.token;
 
-  // ── FIX BUG 3 : priorité à window._newCourseId (vient de step1 juste créé)
-  //    sinon fallback sur le localStorage (cas draft existant)
   const courses  = auth?.freelance?.course_draft;
   const courseId = window._newCourseId
     || ((Array.isArray(courses) && courses.length > 0) ? courses[0].id : null);
 
-  // Nettoyer après usage
   if (window._newCourseId) window._newCourseId = null;
 
   let chapters = [];
@@ -796,9 +787,18 @@ window.initCourseBuilder = function () {
     titleDisplay.className = 'module-title-display' + (mod.title ? '' : ' empty');
     titleDisplay.textContent = mod.title || 'Titre du module…';
     header.appendChild(titleDisplay);
+
+    // ✅ FIX 1 : badge "Obligatoire" toujours affiché, ET badge statut upload en plus
+    if (mod.is_required) {
+      const requiredPill = document.createElement('span');
+      requiredPill.className = 'module-status-pill status-required';
+      requiredPill.textContent = 'Obligatoire';
+      header.appendChild(requiredPill);
+    }
     const pill = document.createElement('span');
     setPill(pill, mod);
     header.appendChild(pill);
+
     const chevron = document.createElement('span');
     chevron.className = 'module-chevron'; chevron.innerHTML = '▼';
     header.appendChild(chevron);
@@ -890,10 +890,19 @@ window.initCourseBuilder = function () {
     return item;
   }
 
+  // ✅ FIX 1 : setPill n'affiche plus "Obligatoire" — c'est géré séparément dans buildModuleEl
+  // Il affiche toujours le statut upload, même pour les modules obligatoires
   function setPill(pill, mod) {
-    const map = { idle:['status-idle','En attente'], uploading:['status-uploading','Upload…'], checking:['status-checking','Vérification…'], uploaded:['status-uploaded','✅ Prêt'], error:['status-error','❌ Erreur'] };
-    if (mod.is_required) { pill.className = 'module-status-pill status-required'; pill.textContent = 'Obligatoire'; }
-    else { const [cls, txt] = map[mod.upload_status] || map.idle; pill.className = 'module-status-pill ' + cls; pill.textContent = txt; }
+    const map = {
+      idle:      ['status-idle',      'En attente'],
+      uploading: ['status-uploading', 'Upload…'],
+      checking:  ['status-checking',  'Vérification…'],
+      uploaded:  ['status-uploaded',  '✅ Prêt'],
+      error:     ['status-error',     '❌ Erreur'],
+    };
+    const [cls, txt] = map[mod.upload_status] || map.idle;
+    pill.className = 'module-status-pill ' + cls;
+    pill.textContent = txt;
   }
 
   function buildUploadZone(mod, ch, pill) {
@@ -904,7 +913,16 @@ window.initCourseBuilder = function () {
     zone.appendChild(fileInput);
 
     if (mod.vimeo_uri) {
-      zone.appendChild(buildPlayer(mod.vimeo_uri));
+      // ✅ FIX 2 : si le statut est "checking", on affiche un message d'attente
+      // au lieu d'essayer de charger le player Vimeo (qui n'est pas encore prêt)
+      if (mod.upload_status === 'checking') {
+        const waitMsg = document.createElement('div');
+        waitMsg.style.cssText = 'padding:16px;text-align:center;font-size:.78rem;color:#7c3aed;font-weight:500;';
+        waitMsg.innerHTML = '⏳ Transcodage en cours… la vidéo sera disponible dans quelques instants.';
+        zone.appendChild(waitMsg);
+      } else {
+        zone.appendChild(buildPlayer(mod.vimeo_uri));
+      }
       const replaceBtn = document.createElement('button');
       replaceBtn.className = 'upload-file-btn';
       replaceBtn.style.cssText = 'font-size:.72rem;padding:6px 12px;margin-top:6px;width:100%;';
@@ -1067,14 +1085,10 @@ window.initCourseBuilder = function () {
     const linkCx   = document.getElementById('ressources-link-cancel');
     if (!editor) return;
 
-    // Sync hidden input
     editor.addEventListener('input', () => { if (hidden) hidden.value = editor.innerHTML; });
-
-    // Placeholder
     editor.addEventListener('focus', () => editor.classList.add('rt-focused'));
     editor.addEventListener('blur',  () => editor.classList.remove('rt-focused'));
 
-    // Toolbar buttons (bold, italic, underline, removeFormat)
     toolbar?.querySelectorAll('.rt-btn[data-cmd]').forEach(btn => {
       btn.addEventListener('click', e => {
         e.preventDefault();
@@ -1084,11 +1098,9 @@ window.initCourseBuilder = function () {
       });
     });
 
-    // Lien — ouvre popup
     let savedRange = null;
     linkBtn?.addEventListener('click', e => {
       e.preventDefault();
-      // Sauvegarder la sélection
       const sel = window.getSelection();
       if (sel && sel.rangeCount) {
         savedRange = sel.getRangeAt(0).cloneRange();
@@ -1107,7 +1119,6 @@ window.initCourseBuilder = function () {
       if (!url) { linkPopup.style.display = 'none'; return; }
       linkPopup.style.display = 'none';
       editor.focus();
-      // Restaurer sélection
       if (savedRange) {
         const sel = window.getSelection();
         sel.removeAllRanges();
@@ -1121,7 +1132,6 @@ window.initCourseBuilder = function () {
       savedRange = null;
     });
 
-    // Entrée dans popup = confirmer
     [linkText, linkUrl].forEach(inp => inp?.addEventListener('keydown', e => {
       if (e.key === 'Enter') { e.preventDefault(); linkOk.click(); }
       if (e.key === 'Escape') { linkPopup.style.display = 'none'; editor.focus(); }
@@ -1190,7 +1200,6 @@ window.initCourseBuilder = function () {
     try {
       const res=await fetch(SAVE_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify(buildPayload())});
       if(!res.ok) throw new Error('Erreur serveur ('+res.status+')');
-      // Refresh localStorage pour persister les données
       await new Promise(resolve => setTimeout(resolve, 800));
       try {
         const meRes=await fetch('https://xmot-l3ir-7kuj.p7.xano.io/api:uFugjjm6/user_full_data',{headers:{'Authorization':'Bearer '+token}});
@@ -1212,7 +1221,6 @@ window.initCourseBuilder = function () {
       const res=await fetch(PUBLISH_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify(buildPayload())});
       if(!res.ok) throw new Error('Erreur serveur ('+res.status+')');
 
-      // Refresh localStorage avec délai
       await new Promise(resolve => setTimeout(resolve, 800));
       try {
         const meRes=await fetch('https://xmot-l3ir-7kuj.p7.xano.io/api:uFugjjm6/user_full_data',{headers:{'Authorization':'Bearer '+token}});
@@ -1221,12 +1229,10 @@ window.initCourseBuilder = function () {
           const cur=JSON.parse(localStorage.getItem('auth')||'{}');
           localStorage.setItem('auth',JSON.stringify(Object.assign({},cur,meData)));
 
-          // Cacher step2 et ses titres
           ['step2-root','step2-title','step2-desc'].forEach(id => {
             document.getElementById(id)?.classList.remove('is-visible');
           });
 
-          // Afficher section published et remplir les cards
           const publishedData = meData?.freelance?.course_published || [];
           if (typeof window.renderPublishedSection === 'function') {
             window.renderPublishedSection(publishedData);
@@ -1238,14 +1244,11 @@ window.initCourseBuilder = function () {
         }
       } catch(e){console.warn('Refresh auth failed:',e);}
 
-      // Afficher pop-up confirmation
       document.getElementById('popup-publish-confirm')?.classList.add('active');
 
     } catch(err) { showToast('❌ Erreur publication : '+err.message,4000); }
     finally { btn.disabled=false; btn.textContent='🚀 Publier la formation'; }
   });
-
-
 
   document.querySelectorAll('[data-close]').forEach(btn=>btn.addEventListener('click',()=>document.getElementById(btn.dataset.close)?.classList.remove('active')));
   document.querySelectorAll('.popup-overlay').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('active');}));
@@ -1255,9 +1258,7 @@ window.initCourseBuilder = function () {
 
 
 // ============================================================
-
-// ============================================================
-// ROUTING — s'exécute après step1 + step2 (DOMContentLoaded)
+// ROUTING
 // ============================================================
 
 (function () {
@@ -1275,15 +1276,9 @@ window.initCourseBuilder = function () {
   const draftData       = freelance.draft_item_by_course     || null;
   const publishedData   = freelance.course_published         || [];
 
-  // ── show/hide via classe CSS (résistant aux overrides Webflow) ──
   function show(id) { document.getElementById(id)?.classList.add('is-visible'); }
   function hide(id) { document.getElementById(id)?.classList.remove('is-visible'); }
 
-  // Tout est caché par défaut via CSS !important — on n'a rien à faire ici
-
-  // ============================================================
-  // CAS 1 : Aucun cours → marketing
-  // ============================================================
   if (courseDraft.length === 0 && coursePublished.length === 0) {
     show('section-marketing');
     document.getElementById('btn-start-formation')?.addEventListener('click', () => {
@@ -1296,9 +1291,6 @@ window.initCourseBuilder = function () {
     return;
   }
 
-  // ============================================================
-  // CAS 2 : Draft actif → step2
-  // ============================================================
   if (courseDraft.length > 0) {
     if (draftData && draftData.chapters && draftData.course) {
       window._draftRestore = buildRestoreData(draftData);
@@ -1311,14 +1303,10 @@ window.initCourseBuilder = function () {
     if (coursePublished.length > 0) {
       renderPublishedSection(publishedData);
       show('section-published');
-      // Pas de bouton "Nouvelle formation" tant qu'un draft est en cours
     }
     return;
   }
 
-  // ============================================================
-  // CAS 3 : Seulement publiés, pas de draft
-  // ============================================================
   if (coursePublished.length > 0) {
     renderPublishedSection(publishedData);
     show('section-published');
@@ -1336,9 +1324,6 @@ window.initCourseBuilder = function () {
     return;
   }
 
-  // ============================================================
-  // RECONSTRUCTION DONNÉES DRAFT
-  // ============================================================
   function buildRestoreData(data) {
     const rawChapters = data.chapters || [];
     const rawModules  = data.course   || [];
@@ -1381,7 +1366,6 @@ window.initCourseBuilder = function () {
       return;
     }
     publishedData.forEach(item => {
-      // Les données sont directement dans item (course_published[i])
       const courseTitle    = item.title            || 'Formation sans titre';
       const coverUrl       = item.cover_url        || '';
       const iconUrl        = item.icon_cours_url   || '';
@@ -1426,7 +1410,6 @@ window.initCourseBuilder = function () {
       list.appendChild(card);
     });
   }
-  // Expose pour appel depuis le handler publish
   window.renderPublishedSection = renderPublishedSection;
 
   function esc(str) {
@@ -1436,7 +1419,7 @@ window.initCourseBuilder = function () {
 })();
 
 // ============================================================
-// POP-UP CONFIRMATION PUBLICATION — injectée dynamiquement
+// POP-UP CONFIRMATION PUBLICATION
 // ============================================================
 (function() {
   const popup = document.createElement('div');
@@ -1465,8 +1448,7 @@ window.initCourseBuilder = function () {
 })();
 
 // ============================================================
-// BOUTON ABANDONNER LA FORMATION — listener global
-// Hors de initCourseBuilder pour être toujours actif
+// BOUTON ABANDONNER LA FORMATION
 // ============================================================
 document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('btn-delete-draft')?.addEventListener('click', () => {
@@ -1499,7 +1481,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
       popup?.classList.remove('active');
 
-      // Refresh localStorage
       await new Promise(resolve => setTimeout(resolve, 800));
       const meRes = await fetch('https://xmot-l3ir-7kuj.p7.xano.io/api:uFugjjm6/user_full_data', {
         headers: { 'Authorization': 'Bearer ' + token }
@@ -1509,12 +1490,10 @@ document.addEventListener('DOMContentLoaded', function() {
       const cur = JSON.parse(localStorage.getItem('auth') || '{}');
       localStorage.setItem('auth', JSON.stringify(Object.assign({}, cur, meData)));
 
-      // Cacher step2
       ['step2-root','step2-title','step2-desc'].forEach(id => {
         document.getElementById(id)?.classList.remove('is-visible');
       });
 
-      // Afficher la bonne section
       const freshPublished = meData?.freelance?.course_published || [];
       if (freshPublished.length > 0) {
         if (typeof window.renderPublishedSection === 'function') {
