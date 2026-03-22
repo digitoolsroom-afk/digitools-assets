@@ -1535,6 +1535,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
 
 
+
+
+
+
+
+
+
 // ============================================================
 // ÉDITION COURS PUBLIÉ — openCourseEdit()
 // À ajouter à la fin du grand script dr-course.js
@@ -1879,7 +1886,7 @@ document.addEventListener('DOMContentLoaded', function() {
       if (chRequest) {
         const b = document.createElement('span');
         b.className   = 'edit-request-badge ' + (chRequest.status === 'draft' ? 'add' : 'delete');
-        b.textContent = chRequest.status === 'draft' ? '📋 Suppression non soumise' : '🗑 Suppression en attente';
+        b.textContent = chRequest.status === 'draft' ? '📋 Suppression en attente de soumission' : '🗑 Suppression en attente de validation';
         header.appendChild(b);
       }
 
@@ -1967,17 +1974,17 @@ document.addEventListener('DOMContentLoaded', function() {
       const b = document.createElement('span');
       if (modRequest.change_type === 'delete_module') {
         b.className   = 'edit-request-badge ' + (isDraft ? 'add' : 'delete');
-        b.textContent = isDraft ? '📋 Suppression non soumise' : '🗑 Suppression en attente';
+        b.textContent = isDraft ? '📋 Suppression en attente de soumission' : '🗑 Suppression en attente de validation';
       } else {
         b.className   = 'edit-request-badge ' + (isDraft ? 'add' : 'video');
-        b.textContent = isDraft ? '📋 Remplacement vidéo non soumis' : '🎬 Remplacement vidéo en attente';
+        b.textContent = isDraft ? '📋 Remplacement vidéo en attente de soumission' : '🎬 Remplacement vidéo en attente de validation';
       }
       item.appendChild(b);
     }
 
     if (isPendingAdd) {
       const b = document.createElement('span'); b.className = 'edit-request-badge add';
-      b.textContent = '📋 Ajout non soumis'; item.appendChild(b);
+      b.textContent = '📋 Ajout en attente de soumission'; item.appendChild(b);
     }
 
     const actions = document.createElement('div'); actions.className = 'edit-module-actions';
@@ -2247,26 +2254,126 @@ document.addEventListener('DOMContentLoaded', function() {
     if (!overlay) return;
     document.getElementById('edit-add-module-chapter-name').textContent = ch.title;
     document.getElementById('edit-add-module-title-input').value = '';
+    document.getElementById('edit-add-module-duration').value = '';
+    document.getElementById('edit-add-module-vimeo-uri').value = '';
+    document.getElementById('edit-add-module-status').textContent = '';
+    document.getElementById('edit-add-module-progress-bar').style.display = 'none';
+    document.getElementById('edit-add-module-progress-fill').style.width = '0%';
+    document.getElementById('edit-add-module-confirm').disabled = true;
     overlay.classList.add('active');
     overlay._ch = ch;
   }
 
   function initAddModuleModal() {
-    const overlay = document.getElementById('edit-add-module-modal');
+    const overlay   = document.getElementById('edit-add-module-modal');
     if (!overlay) return;
+    const fileInput = document.getElementById('edit-add-module-video-file');
+    const statusEl  = document.getElementById('edit-add-module-status');
+    const progBar   = document.getElementById('edit-add-module-progress-bar');
+    const progFill  = document.getElementById('edit-add-module-progress-fill');
+    const confirmBtn= document.getElementById('edit-add-module-confirm');
+    const uriHidden = document.getElementById('edit-add-module-vimeo-uri');
+
     document.getElementById('edit-add-module-cancel')?.addEventListener('click', () => overlay.classList.remove('active'));
-    document.getElementById('edit-add-module-confirm')?.addEventListener('click', async () => {
-      const title = (document.getElementById('edit-add-module-title-input')?.value || '').trim();
-      if (!title) { showToastEdit('❌ Entrez un titre'); return; }
+
+    // Bouton choisir vidéo
+    document.getElementById('edit-add-module-video-btn')?.addEventListener('click', () => fileInput?.click());
+
+    // Upload vidéo TUS
+    if (fileInput && !fileInput._modBound) {
+      fileInput._modBound = true;
+      fileInput.addEventListener('change', async function () {
+        const file = this.files[0]; if (!file) return;
+        const token = getToken();
+        const courseId = _currentCourse.id;
+        const moduleTempId = 'newmod-' + Date.now();
+
+        statusEl.textContent = 'Préparation…';
+        progBar.style.display = 'block';
+        progFill.style.width = '0%';
+        confirmBtn.disabled = true;
+        document.getElementById('edit-add-module-filename').textContent = file.name;
+
+        try {
+          const initRes = await fetch(VIMEO_UPLOAD_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+            body: JSON.stringify({ course_id: courseId, module_temp_id: moduleTempId, file_name: file.name, file_size: file.size }),
+          });
+          if (!initRes.ok) throw new Error('Erreur init Vimeo');
+          const { upload_link, vimeo_uri } = await initRes.json();
+
+          let offset = 0;
+          while (offset < file.size) {
+            const chunk = file.slice(offset, offset + CHUNK_SIZE);
+            const r = await fetch(upload_link, {
+              method: 'PATCH',
+              headers: { 'Tus-Resumable': '1.0.0', 'Upload-Offset': String(offset), 'Content-Type': 'application/offset+octet-stream', 'Content-Length': String(chunk.size) },
+              body: chunk,
+            });
+            if (!r.ok && r.status !== 204) throw new Error('Upload échoué');
+            offset += chunk.size;
+            const pct = Math.min(Math.round((offset / file.size) * 100), 99);
+            progFill.style.width = pct + '%';
+            statusEl.textContent = 'Upload… ' + pct + '%';
+          }
+
+          await fetch(VIMEO_FINALIZE_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+            body: JSON.stringify({ vimeo_uri, module_temp_id: moduleTempId }),
+          });
+
+          uriHidden.value = vimeo_uri;
+          progFill.style.width = '100%';
+          statusEl.textContent = '✅ Vidéo uploadée avec succès !';
+          confirmBtn.disabled = false;
+
+        } catch(e) {
+          statusEl.textContent = '❌ ' + e.message;
+          progFill.classList.add('error');
+          confirmBtn.disabled = true;
+        }
+      });
+    }
+
+    confirmBtn?.addEventListener('click', async () => {
+      const title    = (document.getElementById('edit-add-module-title-input')?.value || '').trim();
+      const durRaw   = (document.getElementById('edit-add-module-duration')?.value || '').trim();
+      const vimeoUri = uriHidden.value;
+
+      if (!title)    { showToastEdit('❌ Entrez un titre pour le module'); return; }
+      if (!vimeoUri) { showToastEdit('❌ Uploadez la vidéo avant de soumettre'); return; }
+
+      // Convertir durée MM:SS en secondes
+      let durationSec = 0;
+      if (durRaw && /^\d{1,3}:\d{2}$/.test(durRaw)) {
+        const [m, s] = durRaw.split(':').map(Number);
+        durationSec = m * 60 + s;
+      }
+
       const ch = overlay._ch;
       overlay.classList.remove('active');
+
       try {
-        await sendRequest({ change_type: 'add_module', target_id: String(ch.id), target_type: 'chapter', payload: { module_title: title, chapter_title: ch.title, chapter_temp_id: ch.chapter_temp_id } });
+        await sendRequest({
+          change_type: 'add_module',
+          target_id:   String(ch.id),
+          target_type: 'chapter',
+          payload: {
+            module_title:     title,
+            chapter_title:    ch.title,
+            chapter_temp_id:  ch.chapter_temp_id,
+            new_vimeo_uri:    vimeoUri,
+            duration_seconds: durationSec,
+          },
+        });
         _currentModules.push({ id: 'pending-' + Date.now(), title, _pendingAdd: true, chapter_temp_id: ch.chapter_temp_id, order_index: 999 });
         fillStructureTab(); fillDemandesTab(); updateSubmitBar();
         showToastEdit('📋 Demande ajoutée — pensez à soumettre !');
       } catch { showToastEdit('❌ Erreur envoi demande'); }
     });
+
     overlay.addEventListener('click', e => { if (e.target === overlay) overlay.classList.remove('active'); });
   }
 
@@ -2275,6 +2382,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const overlay = document.getElementById('edit-add-chapter-modal');
     if (!overlay) return;
     document.getElementById('edit-add-chapter-title-input').value = '';
+    document.getElementById('edit-add-chapter-duration').value    = '';
+    document.getElementById('edit-add-chapter-nb-modules').value  = '';
     overlay.classList.add('active');
   }
 
@@ -2283,11 +2392,24 @@ document.addEventListener('DOMContentLoaded', function() {
     if (!overlay) return;
     document.getElementById('edit-add-chapter-cancel')?.addEventListener('click', () => overlay.classList.remove('active'));
     document.getElementById('edit-add-chapter-confirm')?.addEventListener('click', async () => {
-      const title = (document.getElementById('edit-add-chapter-title-input')?.value || '').trim();
-      if (!title) { showToastEdit('❌ Entrez un titre'); return; }
+      const title     = (document.getElementById('edit-add-chapter-title-input')?.value || '').trim();
+      const duration  = parseInt(document.getElementById('edit-add-chapter-duration')?.value)   || 0;
+      const nbModules = parseInt(document.getElementById('edit-add-chapter-nb-modules')?.value) || 0;
+
+      if (!title) { showToastEdit('❌ Entrez un titre pour le chapitre'); return; }
+
       overlay.classList.remove('active');
       try {
-        await sendRequest({ change_type: 'add_chapter', target_id: String(_currentCourse.id), target_type: 'course', payload: { chapter_title: title } });
+        await sendRequest({
+          change_type: 'add_chapter',
+          target_id:   String(_currentCourse.id),
+          target_type: 'course',
+          payload: {
+            chapter_title:    title,
+            duration_minutes: duration,
+            nb_modules:       nbModules,
+          },
+        });
         fillDemandesTab(); updateSubmitBar();
         showToastEdit('📋 Demande ajoutée — pensez à soumettre !');
       } catch { showToastEdit('❌ Erreur envoi demande'); }
