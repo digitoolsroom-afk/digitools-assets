@@ -2099,6 +2099,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const actions = document.createElement('div'); actions.className = 'edit-module-actions';
     if (!isPendingAdd) {
+      // ✅ Bouton voir la vidéo (si le module a une vidéo)
+      if (mod.vimeo_video_uri) {
+        const viewBtn = document.createElement('button'); viewBtn.className = 'edit-btn-replace-video';
+        viewBtn.textContent = '👁️ Voir la vidéo';
+        viewBtn.style.cssText = 'background:#f0fdf4;border-color:#86efac;color:#15803d;';
+        viewBtn.addEventListener('click', () => openVideoPreviewPopup(mod.vimeo_video_uri, mod.title));
+        actions.appendChild(viewBtn);
+      }
+
       if (!isRequired) {
         const saveBtn = document.createElement('button'); saveBtn.className = 'edit-btn-save-module';
         saveBtn.textContent = '💾 Titre';
@@ -2367,8 +2376,13 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('edit-add-module-duration').value = '';
     document.getElementById('edit-add-module-vimeo-uri').value = '';
     document.getElementById('edit-add-module-status').textContent = '';
+    document.getElementById('edit-add-module-filename').textContent = 'Aucun fichier sélectionné'; // ✅ Reset nom fichier
     document.getElementById('edit-add-module-progress-bar').style.display = 'none';
     document.getElementById('edit-add-module-progress-fill').style.width = '0%';
+    document.getElementById('edit-add-module-progress-fill').classList.remove('error');
+    // ✅ Reset le file input pour permettre de choisir un nouveau fichier
+    const fileInput = document.getElementById('edit-add-module-video-file');
+    if (fileInput) fileInput.value = '';
     document.getElementById('edit-add-module-confirm').disabled = true;
     overlay.classList.add('active');
     overlay._ch = ch;
@@ -2528,6 +2542,19 @@ document.addEventListener('DOMContentLoaded', function() {
       } catch { showToastEdit('❌ Erreur envoi demande'); }
     });
     overlay.addEventListener('click', e => { if (e.target === overlay) overlay.classList.remove('active'); });
+  }
+
+  // ============================================================
+  // PREVIEW VIDÉO
+  // ============================================================
+  function openVideoPreviewPopup(vimeoUri, title) {
+    const overlay = document.getElementById('edit-video-preview-modal');
+    if (!overlay) return;
+    document.getElementById('edit-video-preview-title').textContent = title || 'Vidéo';
+    const vimeoId = vimeoUri.replace('/videos/', '');
+    const iframe   = document.getElementById('edit-video-preview-iframe');
+    if (iframe) iframe.src = `https://player.vimeo.com/video/${vimeoId}?title=0&byline=0&portrait=0`;
+    overlay.classList.add('active');
   }
 
   // ============================================================
@@ -2699,9 +2726,21 @@ document.addEventListener('DOMContentLoaded', function() {
     initAddModuleModal();
     initAddChapterModal();
 
-    ['popup-pending-validation','popup-changes-pending','popup-replace-video','popup-request-sent'].forEach(id => {
+    ['popup-pending-validation','popup-changes-pending','popup-replace-video','popup-request-sent','edit-video-preview-modal'].forEach(id => {
       const el = document.getElementById(id);
-      if (el) el.addEventListener('click', e => { if (e.target === el) el.classList.remove('active'); });
+      if (el) el.addEventListener('click', e => { if (e.target === el) {
+        // Stopper la vidéo en vidant le src avant de fermer
+        const iframe = el.querySelector('iframe');
+        if (iframe) { const src = iframe.src; iframe.src = ''; setTimeout(() => iframe.src = src, 100); }
+        el.classList.remove('active');
+      }});
+    });
+
+    document.getElementById('edit-video-preview-close')?.addEventListener('click', () => {
+      const overlay = document.getElementById('edit-video-preview-modal');
+      const iframe  = document.getElementById('edit-video-preview-iframe');
+      if (iframe) iframe.src = '';
+      overlay?.classList.remove('active');
     });
   });
 
