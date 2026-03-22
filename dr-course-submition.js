@@ -10,7 +10,7 @@ const COURSE_CREATE_ENDPOINT = 'https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/c
 window.triggerCreateCourse = async function (payload, token, onSuccess, onError) {
   if (!token) { if (onError) onError('Vous devez être connecté.'); return; }
   const auth               = JSON.parse(localStorage.getItem('auth') || 'null');
-  const profile            = auth?.freelance?.profile?.[0];
+  const profile            = auth?.freelance?.profile;
   const freelanceProfileId = profile?.id || null;
 
   const body = {
@@ -58,7 +58,7 @@ window.initCourseStep1 = function () {
 
   const auth    = JSON.parse(localStorage.getItem('auth') || 'null');
   const token   = auth?.token;
-  const profile = auth?.freelance?.profile?.[0];
+  const profile = auth?.freelance?.profile;
 
   const UPLOAD_URL = 'https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/upload-proof';
 
