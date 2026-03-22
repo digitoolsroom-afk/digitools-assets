@@ -1669,18 +1669,14 @@ document.addEventListener('DOMContentLoaded', function() {
       if (!courseRes.ok) throw new Error('Erreur chargement cours (' + courseRes.status + ')');
       const courseData = await courseRes.json();
 
-      let requestsData = { requests: [] };
-      try {
-        const reqRes = await fetch(`${GET_REQUESTS_URL}?course_id=${courseId}`, {
-          headers: { 'Authorization': 'Bearer ' + token }
-        });
-        if (reqRes.ok) requestsData = await reqRes.json();
-      } catch(e) { console.warn('[edit] get_requests failed:', e); }
-
       _currentCourse   = courseData.course;
       _currentChapters = (courseData.chapters || []).sort((a, b) => a.order_index - b.order_index);
       _currentModules  = courseData.modules  || [];
-      _allRequests     = requestsData.requests || [];
+
+      // ✅ Charger les demandes depuis localStorage (plus fiable qu'un appel API après reload)
+      const authData = getAuth();
+      const allChangeRequests = authData?.freelance?.course_change_request || [];
+      _allRequests = allChangeRequests.filter(r => r.courses_id === courseId || r.courses_id === String(courseId));
 
       // Générer session_id unique pour cette session d'édition
       _sessionId = 'session-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
@@ -1936,6 +1932,69 @@ document.addEventListener('DOMContentLoaded', function() {
       }
 
       card.appendChild(modList);
+      list.appendChild(card);
+    });
+
+    // Afficher les chapitres en attente d'ajout (draft ou pending)
+    const pendingChapters = _allRequests.filter(r =>
+      r.change_type === 'add_chapter' &&
+      (r.status === 'draft' || r.status === 'pending')
+    );
+    pendingChapters.forEach(req => {
+      let title = '';
+      try {
+        const p = typeof req.payload === 'object' ? req.payload : JSON.parse(req.payload || '{}');
+        title = p.chapter_title || '—';
+      } catch { title = '—'; }
+
+      const card = document.createElement('div'); card.className = 'edit-chapter-card';
+      card.style.cssText = 'opacity:.65;border-style:dashed;';
+      const header = document.createElement('div'); header.className = 'edit-chapter-header';
+
+      const badge = document.createElement('span'); badge.className = 'edit-chapter-badge';
+      badge.textContent = 'NOUVEAU CHAPITRE'; header.appendChild(badge);
+
+      const titleEl = document.createElement('span');
+      titleEl.style.cssText = 'font-size:.88rem;font-weight:600;color:#374151;flex:1;';
+      titleEl.textContent = title; header.appendChild(titleEl);
+
+      const reqBadge = document.createElement('span');
+      reqBadge.className = 'edit-request-badge ' + (req.status === 'draft' ? 'add' : 'video');
+      reqBadge.textContent = req.status === 'draft' ? '📋 Ajout en attente de soumission' : '⏳ Ajout en attente de validation';
+      header.appendChild(reqBadge);
+      card.appendChild(header);
+
+      // Si draft → permettre d\'ajouter des modules à ce chapitre
+      if (req.status === 'draft') {
+        const modList = document.createElement('div'); modList.className = 'edit-modules-list';
+
+        const pendingMods = _allRequests.filter(r2 =>
+          r2.change_type === 'add_module' &&
+          r2.target_id === String(req.id) &&
+          (r2.status === 'draft' || r2.status === 'pending')
+        );
+        pendingMods.forEach((modReq, mi) => {
+          let modTitle = '';
+          try {
+            const p = typeof modReq.payload === 'object' ? modReq.payload : JSON.parse(modReq.payload || '{}');
+            modTitle = p.module_title || '—';
+          } catch { modTitle = '—'; }
+          const modItem = document.createElement('div'); modItem.className = 'edit-module-item pending-add';
+          modItem.innerHTML = `<div class="edit-module-num">${mi + 1}</div><span style="flex:1;font-size:.85rem;color:#374151;padding:0 8px;">${modTitle}</span><span class="edit-request-badge add">📋 Ajout en attente de soumission</span>`;
+          modList.appendChild(modItem);
+        });
+
+        const addModBtn = document.createElement('button'); addModBtn.className = 'edit-btn-add-module';
+        addModBtn.textContent = '+ Ajouter un module à ce chapitre';
+        addModBtn.addEventListener('click', () => openAddModuleModal({
+          id: req.id,
+          title: title,
+          chapter_temp_id: 'pending-ch-' + req.id,
+          _isPendingChapter: true,
+        }));
+        modList.appendChild(addModBtn);
+        card.appendChild(modList);
+      }
       list.appendChild(card);
     });
 
