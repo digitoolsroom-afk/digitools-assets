@@ -2479,7 +2479,7 @@ document.addEventListener('DOMContentLoaded', function() {
             nb_modules:       nbModules,
           },
         });
-        fillDemandesTab(); updateSubmitBar();
+        fillStructureTab(); fillDemandesTab(); updateSubmitBar();
         showToastEdit('📋 Demande ajoutée — pensez à soumettre !');
       } catch { showToastEdit('❌ Erreur envoi demande'); }
     });
