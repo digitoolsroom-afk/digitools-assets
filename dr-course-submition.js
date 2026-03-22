@@ -1678,8 +1678,10 @@ document.addEventListener('DOMContentLoaded', function() {
       const allChangeRequests = authData?.freelance?.course_change_request || [];
       _allRequests = allChangeRequests.filter(r => r.courses_id === courseId || r.courses_id === String(courseId));
 
-      // Générer session_id unique pour cette session d'édition
-      _sessionId = 'session-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+      // Réutiliser le session_id existant si des drafts existent déjà
+      // sinon en générer un nouveau
+      const existingDraft = _allRequests.find(r => r.status === 'draft');
+      _sessionId = existingDraft?.session_id || ('session-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8));
 
       document.getElementById('section-published')?.classList.remove('is-visible');
       const editSection = document.getElementById('section-edit-course');
@@ -1705,7 +1707,8 @@ document.addEventListener('DOMContentLoaded', function() {
   // BARRE DE SOUMISSION — affichée quand des drafts existent
   // ============================================================
   function updateSubmitBar() {
-    const draftCount = _allRequests.filter(r => r.status === 'draft' && r.session_id === _sessionId).length;
+    // ✅ Compter TOUS les drafts du cours (toutes sessions confondues)
+    const draftCount = _allRequests.filter(r => r.status === 'draft').length;
     let bar = document.getElementById('edit-submit-bar');
 
     if (draftCount === 0) {
@@ -1742,12 +1745,13 @@ document.addEventListener('DOMContentLoaded', function() {
       const res = await fetch(SUBMIT_SESSION_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        // ✅ On envoie course_id pour soumettre TOUS les drafts du cours
         body: JSON.stringify({ session_id: _sessionId, course_id: _currentCourse.id }),
       });
       if (!res.ok) throw new Error('Erreur soumission');
 
-      // Passer les drafts de cette session en pending localement
-      _allRequests.forEach(r => { if (r.status === 'draft' && r.session_id === _sessionId) r.status = 'pending'; });
+      // ✅ Passer TOUS les drafts du cours en pending (pas juste la session courante)
+      _allRequests.forEach(r => { if (r.status === 'draft') r.status = 'pending'; });
 
       showToastEdit('✅ Demandes soumises ! Elles seront traitées prochainement.', 4000);
       fillDemandesTab();
@@ -2110,7 +2114,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Bandeau si des drafts existent
-    const draftCount = relevant.filter(r => r.status === 'draft').length;
+    const draftCount = relevant.filter(r => r.status === 'draft').length; // tous drafts du cours
     if (draftCount > 0) {
       const banner = document.createElement('div');
       banner.style.cssText = 'background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:12px;padding:14px 18px;font-size:.82rem;color:#1d4ed8;margin-bottom:12px;line-height:1.5;';
