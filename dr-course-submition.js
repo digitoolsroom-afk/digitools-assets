@@ -1672,10 +1672,12 @@ document.addEventListener('DOMContentLoaded', function() {
       _currentChapters = (courseData.chapters || []).sort((a, b) => a.order_index - b.order_index);
       _currentModules  = courseData.modules  || [];
 
-      // ✅ Charger les demandes depuis localStorage (plus fiable qu'un appel API après reload)
+      // ✅ Charger les demandes depuis localStorage
       const authData = getAuth();
       const allChangeRequests = authData?.freelance?.course_change_request || [];
-      _allRequests = allChangeRequests.filter(r => r.courses_id === courseId || r.courses_id === String(courseId));
+      // Forcer la comparaison en String pour éviter les problèmes integer vs string
+      _allRequests = allChangeRequests.filter(r => String(r.courses_id) === String(courseId));
+      console.log('[edit] _allRequests chargés:', _allRequests.length, 'pour course_id:', courseId);
 
       // Réutiliser le session_id existant si des drafts existent déjà
       // sinon en générer un nouveau
@@ -1840,13 +1842,18 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   function getRequestFor(targetId, targetType, changeTypes) {
-    // Cherche une demande draft ou pending pour cet élément
-    return _allRequests.find(r =>
-      r.target_id === String(targetId) &&
+    const result = _allRequests.find(r =>
+      (String(r.target_id) === String(targetId)) &&
       r.target_type === targetType &&
       (Array.isArray(changeTypes) ? changeTypes.includes(r.change_type) : r.change_type === changeTypes) &&
       (r.status === 'draft' || r.status === 'pending')
     );
+    if (!result && _allRequests.length > 0) {
+      // Debug : afficher pourquoi ça ne match pas
+      console.log('[getRequestFor] cherche targetId:', targetId, '(type:', typeof targetId, ') targetType:', targetType);
+      console.log('[getRequestFor] _allRequests:', _allRequests.map(r => ({target_id: r.target_id, type: typeof r.target_id, target_type: r.target_type, change_type: r.change_type, status: r.status})));
+    }
+    return result;
   }
 
   function fillStructureTab() {
@@ -1856,16 +1863,51 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Bloquer seulement si des demandes sont en pending (soumises mais pas encore validées)
     if (hasPendingRequests()) {
-      list.innerHTML = `
-        <div style="background:#fff7ed;border:1.5px solid #fed7aa;border-radius:14px;padding:28px 24px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:12px;">
-          <div style="font-size:2rem;">🔒</div>
-          <div style="font-size:.95rem;font-weight:700;color:#111112;">Structure temporairement verrouillée</div>
-          <div style="font-size:.82rem;color:#6b7280;line-height:1.6;max-width:420px;">
-            Vous avez des demandes de modification soumises en attente de validation.<br>
-            La structure sera à nouveau modifiable une fois qu'elles auront toutes été traitées.<br><br>
-            Consultez l'onglet <strong>Mes demandes</strong> pour suivre leur état.
-          </div>
+      // Afficher le message de verrouillage
+      const lockDiv = document.createElement('div');
+      lockDiv.style.cssText = 'background:#fff7ed;border:1.5px solid #fed7aa;border-radius:14px;padding:28px 24px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:12px;margin-bottom:16px;';
+      lockDiv.innerHTML = `
+        <div style="font-size:2rem;">🔒</div>
+        <div style="font-size:.95rem;font-weight:700;color:#111112;">Structure temporairement verrouillée</div>
+        <div style="font-size:.82rem;color:#6b7280;line-height:1.6;max-width:420px;">
+          Vous avez des demandes de modification soumises en attente de validation.<br>
+          La structure sera à nouveau modifiable une fois qu'elles auront toutes été traitées.<br><br>
+          Consultez l'onglet <strong>Mes demandes</strong> pour suivre leur état.
         </div>`;
+      list.appendChild(lockDiv);
+
+      // ✅ Afficher quand même les demandes draft en lecture seule
+      const drafts = _allRequests.filter(r => r.status === 'draft');
+      if (drafts.length > 0) {
+        const draftTitle = document.createElement('div');
+        draftTitle.style.cssText = 'font-size:.78rem;font-weight:700;color:#374151;margin-bottom:8px;';
+        draftTitle.textContent = '📋 Demandes non soumises :';
+        list.appendChild(draftTitle);
+
+        const typeLabels = {
+          delete_chapter: '🗑 Suppression chapitre',
+          delete_module:  '🗑 Suppression module',
+          add_module:     '➕ Ajout module',
+          add_chapter:    '➕ Ajout chapitre',
+          replace_video:  '🎬 Remplacement vidéo',
+        };
+
+        drafts.forEach(req => {
+          let label = '';
+          try {
+            const p = typeof req.payload === 'object' ? req.payload : JSON.parse(req.payload || '{}');
+            label = p.title || p.module_title || p.chapter_title || '';
+          } catch {}
+
+          const row = document.createElement('div');
+          row.style.cssText = 'background:#fff;border:1.5px dashed #e0e7ff;border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:10px;margin-bottom:8px;';
+          row.innerHTML = `
+            <span style="font-size:.82rem;font-weight:600;color:#374151;flex:1;">${typeLabels[req.change_type] || req.change_type}${label ? ' — ' + label : ''}</span>
+            <span class="edit-request-badge add">📋 En attente de soumission</span>
+          `;
+          list.appendChild(row);
+        });
+      }
       return;
     }
 
@@ -1979,7 +2021,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const pendingMods = _allRequests.filter(r2 =>
           r2.change_type === 'add_module' &&
-          r2.target_id === String(req.id) &&
+          String(r2.target_id) === String(req.id) &&
           (r2.status === 'draft' || r2.status === 'pending')
         );
         pendingMods.forEach((modReq, mi) => {
@@ -2413,12 +2455,13 @@ document.addEventListener('DOMContentLoaded', function() {
       if (!title)    { showToastEdit('❌ Entrez un titre pour le module'); return; }
       if (!vimeoUri) { showToastEdit('❌ Uploadez la vidéo avant de soumettre'); return; }
 
+      // ✅ Durée obligatoire et format MM:SS strict
+      if (!durRaw) { showToastEdit('❌ Entrez la durée de la vidéo (ex: 12:34)'); return; }
+      if (!/^\d{1,3}:\d{2}$/.test(durRaw)) { showToastEdit('❌ Format durée invalide — utilisez MM:SS (ex: 12:34)'); return; }
+
       // Convertir durée MM:SS en secondes
-      let durationSec = 0;
-      if (durRaw && /^\d{1,3}:\d{2}$/.test(durRaw)) {
-        const [m, s] = durRaw.split(':').map(Number);
-        durationSec = m * 60 + s;
-      }
+      const [m, s] = durRaw.split(':').map(Number);
+      const durationSec = m * 60 + s;
 
       const ch = overlay._ch;
       overlay.classList.remove('active');
@@ -2465,6 +2508,8 @@ document.addEventListener('DOMContentLoaded', function() {
       const nbModules = parseInt(document.getElementById('edit-add-chapter-nb-modules')?.value) || 0;
 
       if (!title) { showToastEdit('❌ Entrez un titre pour le chapitre'); return; }
+      if (!duration || duration <= 0) { showToastEdit('❌ Entrez la durée totale du chapitre en minutes'); return; }
+      if (!nbModules || nbModules <= 0) { showToastEdit('❌ Entrez le nombre de modules'); return; }
 
       overlay.classList.remove('active');
       try {
