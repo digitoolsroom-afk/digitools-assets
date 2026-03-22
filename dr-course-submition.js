@@ -1529,3 +1529,855 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 });
+
+// ============================================================
+// ÉDITION COURS PUBLIÉ — openCourseEdit()
+// À ajouter à la fin du grand script dr-course.js
+// ============================================================
+
+(function () {
+
+  const MODIFY_INFO_URL    = 'https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/modifier_course_info_generale';
+  const MODIFY_COURSE_URL  = 'https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/modify_course';
+  const REQUEST_CHANGE_URL = 'https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/request_course_change';
+  const GET_REQUESTS_URL   = 'https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/get_course_change_requests';
+  const UPLOAD_URL         = 'https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/upload-proof';
+  const VIMEO_UPLOAD_URL   = 'https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/vimeo_upload';
+  const VIMEO_FINALIZE_URL = 'https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/vimeo_finalize';
+  const CHUNK_SIZE         = 5 * 1024 * 1024;
+
+  const getAuth  = () => { try { return JSON.parse(localStorage.getItem('auth') || 'null'); } catch { return null; } };
+  const getToken = () => { const a = getAuth(); return a?.authToken || a?.token || a?.jwt || null; };
+
+  // État courant
+  let _currentCourse    = null; // données brutes du cours
+  let _currentChapters  = [];
+  let _currentModules   = [];
+  let _pendingRequests  = [];
+  let _editSkills       = [];
+  let _editFaq          = [];
+
+  // ============================================================
+  // POINT D'ENTRÉE — appelé par le clic sur ✏️ Modifier
+  // ============================================================
+  window.openCourseEdit = async function (item) {
+    const token = getToken();
+    const status = item.status || 'pending_validation';
+
+    // Cas 1 : cours en attente de validation
+    if (status === 'pending_validation') {
+      document.getElementById('popup-pending-validation')?.classList.add('active');
+      return;
+    }
+
+    // Cas 2 : vérifier les demandes en attente
+    let pendingRequests = [];
+    try {
+      const res = await fetch(`${GET_REQUESTS_URL}?course_id=${item.id}`, {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        pendingRequests = (data.requests || []).filter(r => r.status === 'pending');
+      }
+    } catch(e) { console.warn('[edit] get requests failed:', e); }
+
+    if (pendingRequests.length > 0) {
+      document.getElementById('popup-changes-pending')?.classList.add('active');
+      return;
+    }
+
+    // Cas 3 : charger et ouvrir la section édition
+    await loadEditSection(item.id);
+  };
+
+  // ============================================================
+  // CHARGER LA SECTION
+  // ============================================================
+  async function loadEditSection(courseId) {
+    const token = getToken();
+    showToastEdit('⏳ Chargement…');
+
+    try {
+      // Charger les données du cours
+      const [courseRes, requestsRes] = await Promise.all([
+        fetch(`${MODIFY_COURSE_URL}?course_id=${courseId}`, { headers: { 'Authorization': 'Bearer ' + token } }),
+        fetch(`${GET_REQUESTS_URL}?course_id=${courseId}`,  { headers: { 'Authorization': 'Bearer ' + token } })
+      ]);
+
+      if (!courseRes.ok) throw new Error('Erreur chargement cours');
+      const courseData    = await courseRes.json();
+      const requestsData  = requestsRes.ok ? await requestsRes.json() : { requests: [] };
+
+      _currentCourse   = courseData.course;
+      _currentChapters = (courseData.chapters || []).sort((a,b) => a.order_index - b.order_index);
+      _currentModules  = courseData.modules  || [];
+      _pendingRequests = requestsData.requests || [];
+
+      // Masquer section published, afficher section édition
+      document.getElementById('section-published')?.classList.remove('is-visible');
+      const editSection = document.getElementById('section-edit-course');
+      if (editSection) editSection.style.display = 'block';
+
+      // Remplir les champs
+      fillInfosTab();
+      fillStructureTab();
+      fillDemandesTab();
+
+      // Tabs
+      initEditTabs();
+      initEditBackBtn(courseId);
+      initInfosForm(courseId);
+      initStructureActions(courseId);
+      initReplaceVideoUpload(courseId);
+
+    } catch(e) {
+      console.error('[edit] loadEditSection:', e);
+      showToastEdit('❌ Erreur chargement');
+    }
+  }
+
+  // ============================================================
+  // REMPLIR L'ONGLET INFOS
+  // ============================================================
+  function fillInfosTab() {
+    const c = _currentCourse;
+    if (!c) return;
+
+    document.getElementById('edit-course-title-display').textContent = c.title || '—';
+    const statusBadge = document.getElementById('edit-status-badge');
+    if (statusBadge) {
+      statusBadge.textContent = c.status === 'published' ? '✅ Publié' : '⏳ En validation';
+      statusBadge.className = 'edit-status-badge ' + (c.status === 'published' ? 'published' : 'pending');
+    }
+
+    setValue('edit-theme',       c.theme            || '');
+    setValue('edit-title',       c.title            || '');
+    setValue('edit-desc-short',  c.description_short|| '');
+    setValue('edit-desc-long',   c.description_long || '');
+    setValue('edit-trainer-bio', c.trainer_bio      || '');
+    setValue('edit-duration',    c.duration_minutes || '');
+    setValue('edit-modules-count', c.modules_count  || '');
+
+    // Prix actuel
+    const priceEl = document.getElementById('edit-price-current');
+    if (priceEl) priceEl.textContent = `Prix actuel : ${c.price_cents ? (c.price_cents / 100) + ' €' : '—'}`;
+
+    // Icône
+    const iconPreview = document.getElementById('edit-icon-preview');
+    if (iconPreview && c.icon_cours_url) {
+      iconPreview.src = c.icon_cours_url;
+      iconPreview.style.display = 'block';
+    }
+    setValue('edit-icon-url', c.icon_cours_url || '');
+
+    // Cover
+    const coverPreview = document.getElementById('edit-cover-preview');
+    if (coverPreview && c.cover_url) {
+      coverPreview.src = c.cover_url;
+      coverPreview.style.display = 'block';
+    }
+    setValue('edit-cover-url', c.cover_url || '');
+
+    // Skills
+    _editSkills = Array.isArray(c.skills) ? [...c.skills] : [];
+    renderEditSkills();
+
+    // FAQ
+    _editFaq = Array.isArray(c.faq) ? [...c.faq] : [];
+    renderEditFaq();
+
+    // Init upload images
+    initImageUpload('edit-icon-file', 'edit-icon-preview', 'edit-icon-url', 'edit-icon-status');
+    initImageUpload('edit-cover-file', 'edit-cover-preview', 'edit-cover-url', 'edit-cover-status');
+
+    // Init skills
+    initSkillsEdit();
+
+    // Init FAQ
+    initFaqEdit();
+  }
+
+  // ============================================================
+  // REMPLIR L'ONGLET STRUCTURE
+  // ============================================================
+  function fillStructureTab() {
+    const list = document.getElementById('edit-chapters-list');
+    if (!list) return;
+    list.innerHTML = '';
+
+    _currentChapters.forEach((ch, ci) => {
+      const modules = _currentModules
+        .filter(m => m.chapter_temp_id === ch.chapter_temp_id)
+        .sort((a, b) => a.order_index - b.order_index);
+
+      // Vérifier si demandes en attente sur ce chapitre
+      const chRequest = _pendingRequests.find(r => r.target_id === String(ch.id) && r.target_type === 'chapter');
+
+      const card = document.createElement('div');
+      card.className = 'edit-chapter-card';
+
+      // Header chapitre
+      const header = document.createElement('div');
+      header.className = 'edit-chapter-header';
+
+      const badge = document.createElement('span');
+      badge.className = 'edit-chapter-badge';
+      badge.textContent = ci === 0 ? 'CHAPITRE 0 — INTRO' : `CHAPITRE ${ci}`;
+      header.appendChild(badge);
+
+      const titleInput = document.createElement('input');
+      titleInput.className = 'edit-chapter-title-input';
+      titleInput.value = ch.title || '';
+      titleInput.disabled = ci === 0; // intro non modifiable
+      titleInput.placeholder = 'Titre du chapitre…';
+      header.appendChild(titleInput);
+
+      // Badge demande en attente
+      if (chRequest) {
+        const reqBadge = document.createElement('span');
+        reqBadge.className = 'edit-request-badge delete';
+        reqBadge.textContent = '🗑 Suppression en attente';
+        header.appendChild(reqBadge);
+      }
+
+      const actions = document.createElement('div');
+      actions.className = 'edit-chapter-actions';
+
+      // Bouton sauvegarder titre (direct)
+      if (ci !== 0) {
+        const saveBtn = document.createElement('button');
+        saveBtn.className = 'edit-btn-save-chapter';
+        saveBtn.textContent = '💾 Titre';
+        saveBtn.addEventListener('click', () => saveChapterTitle(ch.id, titleInput.value));
+        actions.appendChild(saveBtn);
+
+        // Bouton supprimer (demande)
+        if (!chRequest) {
+          const delBtn = document.createElement('button');
+          delBtn.className = 'edit-btn-delete-chapter';
+          delBtn.textContent = '🗑 Supprimer';
+          delBtn.addEventListener('click', () => requestDeleteChapter(ch));
+          actions.appendChild(delBtn);
+        }
+      }
+
+      header.appendChild(actions);
+      card.appendChild(header);
+
+      // Liste modules
+      const modList = document.createElement('div');
+      modList.className = 'edit-modules-list';
+
+      modules.forEach((mod, mi) => {
+        modList.appendChild(buildEditModuleEl(mod, mi, ch));
+      });
+
+      // Bouton ajouter module (demande)
+      const addModBtn = document.createElement('button');
+      addModBtn.className = 'edit-btn-add-module';
+      addModBtn.textContent = '+ Demander l\'ajout d\'un module';
+      addModBtn.addEventListener('click', () => requestAddModule(ch));
+      modList.appendChild(addModBtn);
+
+      card.appendChild(modList);
+      list.appendChild(card);
+    });
+  }
+
+  function buildEditModuleEl(mod, mi, ch) {
+    // Vérifier demandes en attente sur ce module
+    const modRequest = _pendingRequests.find(r => r.target_id === String(mod.id) && r.target_type === 'module');
+    const isPendingAdd = mod._pendingAdd === true;
+
+    const item = document.createElement('div');
+    item.className = 'edit-module-item' + (isPendingAdd ? ' pending-add' : '');
+
+    const num = document.createElement('div');
+    num.className = 'edit-module-num';
+    num.textContent = mi + 1;
+    item.appendChild(num);
+
+    const titleInput = document.createElement('input');
+    titleInput.className = 'edit-module-title-input';
+    titleInput.value = mod.title || '';
+    titleInput.placeholder = 'Titre du module…';
+    titleInput.disabled = isPendingAdd;
+    item.appendChild(titleInput);
+
+    // Badge demande
+    if (modRequest) {
+      const reqBadge = document.createElement('span');
+      reqBadge.className = 'edit-request-badge ' + (modRequest.change_type === 'delete_module' ? 'delete' : 'video');
+      reqBadge.textContent = modRequest.change_type === 'delete_module' ? '🗑 Suppression en attente' : '🎬 Remplacement vidéo en attente';
+      item.appendChild(reqBadge);
+    }
+
+    if (isPendingAdd) {
+      const reqBadge = document.createElement('span');
+      reqBadge.className = 'edit-request-badge add';
+      reqBadge.textContent = '⏳ Ajout en attente';
+      item.appendChild(reqBadge);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'edit-module-actions';
+
+    if (!isPendingAdd) {
+      // Bouton sauvegarder titre (direct)
+      const saveBtn = document.createElement('button');
+      saveBtn.className = 'edit-btn-save-module';
+      saveBtn.textContent = '💾 Titre';
+      saveBtn.addEventListener('click', () => saveModuleTitle(mod.id, titleInput.value));
+      actions.appendChild(saveBtn);
+
+      // Bouton remplacer vidéo (demande) — si pas de demande déjà en attente
+      if (!modRequest || modRequest.change_type !== 'replace_video') {
+        const replaceBtn = document.createElement('button');
+        replaceBtn.className = 'edit-btn-replace-video';
+        replaceBtn.textContent = '🎬 Remplacer vidéo';
+        replaceBtn.addEventListener('click', () => openReplaceVideoPopup(mod.id));
+        actions.appendChild(replaceBtn);
+      }
+
+      // Bouton supprimer (demande) — si pas de demande déjà en attente
+      if (!modRequest || modRequest.change_type !== 'delete_module') {
+        const delBtn = document.createElement('button');
+        delBtn.className = 'edit-btn-delete-module';
+        delBtn.textContent = '🗑';
+        delBtn.addEventListener('click', () => requestDeleteModule(mod, ch));
+        actions.appendChild(delBtn);
+      }
+    }
+
+    item.appendChild(actions);
+    return item;
+  }
+
+  // ============================================================
+  // REMPLIR L'ONGLET DEMANDES
+  // ============================================================
+  function fillDemandesTab() {
+    const list = document.getElementById('edit-requests-list');
+    if (!list) return;
+    list.innerHTML = '';
+
+    if (!_pendingRequests.length) {
+      list.innerHTML = '<div class="edit-requests-empty">Aucune demande pour le moment.</div>';
+      return;
+    }
+
+    const typeLabels = {
+      delete_chapter: '🗑 Suppression chapitre',
+      delete_module:  '🗑 Suppression module',
+      add_module:     '➕ Ajout module',
+      replace_video:  '🎬 Remplacement vidéo',
+    };
+    const statusLabels = { pending: 'En attente', approved: 'Approuvé', rejected: 'Refusé' };
+
+    _pendingRequests
+      .sort((a,b) => b.requested_at - a.requested_at)
+      .forEach(req => {
+        const row = document.createElement('div');
+        row.className = 'edit-request-row';
+
+        const typeEl = document.createElement('div');
+        typeEl.className = 'edit-request-type';
+        typeEl.textContent = typeLabels[req.change_type] || req.change_type;
+        row.appendChild(typeEl);
+
+        const targetEl = document.createElement('div');
+        targetEl.className = 'edit-request-target';
+        try {
+          const p = JSON.parse(req.payload || '{}');
+          targetEl.textContent = p.title || p.module_title || `ID: ${req.target_id}`;
+        } catch { targetEl.textContent = `ID: ${req.target_id}`; }
+        row.appendChild(targetEl);
+
+        const dateEl = document.createElement('div');
+        dateEl.className = 'edit-request-date';
+        dateEl.textContent = req.requested_at
+          ? new Date(req.requested_at).toLocaleDateString('fr-FR', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' })
+          : '—';
+        row.appendChild(dateEl);
+
+        const statusEl = document.createElement('div');
+        statusEl.className = 'edit-request-status ' + (req.status || 'pending');
+        statusEl.textContent = statusLabels[req.status] || req.status;
+        row.appendChild(statusEl);
+
+        list.appendChild(row);
+      });
+  }
+
+  // ============================================================
+  // INIT TABS
+  // ============================================================
+  function initEditTabs() {
+    document.querySelectorAll('.edit-tab').forEach(tab => {
+      tab.onclick = function () {
+        document.querySelectorAll('.edit-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.edit-tab-pane').forEach(p => p.classList.remove('active'));
+        this.classList.add('active');
+        const pane = document.getElementById('edit-tab-' + this.dataset.tab);
+        if (pane) pane.classList.add('active');
+      };
+    });
+    // Reset sur premier onglet
+    document.querySelectorAll('.edit-tab')[0]?.click();
+  }
+
+  // ============================================================
+  // BOUTON RETOUR
+  // ============================================================
+  function initEditBackBtn() {
+    const btn = document.getElementById('edit-back-btn');
+    if (!btn) return;
+    btn.onclick = () => {
+      document.getElementById('section-edit-course').style.display = 'none';
+      document.getElementById('section-published')?.classList.add('is-visible');
+    };
+  }
+
+  // ============================================================
+  // SOUMISSION INFOS GÉNÉRALES
+  // ============================================================
+  function initInfosForm(courseId) {
+    const btn = document.getElementById('edit-submit-infos');
+    if (!btn) return;
+
+    btn.onclick = async function () {
+      const token = getToken();
+      btn.disabled = true;
+      btn.textContent = 'Enregistrement…';
+
+      const newPriceRaw = document.getElementById('edit-new-price')?.value?.trim();
+      const newPriceCents = newPriceRaw ? Math.round(parseFloat(newPriceRaw) * 100) : null;
+
+      const payload = {
+        course_id:         courseId,
+        theme:             document.getElementById('edit-theme')?.value?.trim()       || '',
+        title:             document.getElementById('edit-title')?.value?.trim()       || '',
+        cover_url:         document.getElementById('edit-cover-url')?.value?.trim()   || '',
+        icon_url:          document.getElementById('edit-icon-url')?.value?.trim()    || '',
+        description_short: document.getElementById('edit-desc-short')?.value?.trim() || '',
+        description_long:  document.getElementById('edit-desc-long')?.value?.trim()  || '',
+        trainer_bio:       document.getElementById('edit-trainer-bio')?.value?.trim()|| '',
+        duration_minutes:  parseInt(document.getElementById('edit-duration')?.value)  || 0,
+        modules_count:     parseInt(document.getElementById('edit-modules-count')?.value) || 0,
+        skills:            _editSkills,
+        faq:               _editFaq,
+        freelance_profile_id: _currentCourse?.freelancer_profile_id || null,
+        new_price_cents:   newPriceCents,
+        asking_new_price:  !!newPriceCents,
+      };
+
+      try {
+        const res = await fetch(MODIFY_INFO_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error('Erreur serveur (' + res.status + ')');
+
+        document.getElementById('edit-course-title-display').textContent = payload.title || '—';
+        showToastEdit('✅ Informations mises à jour !');
+        if (newPriceCents) {
+          document.getElementById('popup-request-sent-msg').textContent =
+            'Vos informations ont été enregistrées. La demande de changement de prix sera traitée prochainement.';
+          document.getElementById('popup-request-sent')?.classList.add('active');
+          document.getElementById('edit-new-price').value = '';
+        }
+      } catch(e) {
+        showToastEdit('❌ Erreur : ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '💾 Enregistrer les modifications';
+      }
+    };
+  }
+
+  // ============================================================
+  // ACTIONS STRUCTURE
+  // ============================================================
+
+  // Sauvegarder titre chapitre (direct)
+  async function saveChapterTitle(chapterId, newTitle) {
+    if (!newTitle.trim()) return;
+    const token = getToken();
+    try {
+      await fetch(REQUEST_CHANGE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify({
+          course_id:   _currentCourse.id,
+          change_type: 'update_chapter_title',
+          target_id:   String(chapterId),
+          payload:     JSON.stringify({ title: newTitle }),
+        }),
+      });
+      showToastEdit('✅ Titre du chapitre mis à jour !');
+    } catch(e) { showToastEdit('❌ Erreur mise à jour titre'); }
+  }
+
+  // Sauvegarder titre module (direct)
+  async function saveModuleTitle(moduleId, newTitle) {
+    if (!newTitle.trim()) return;
+    const token = getToken();
+    try {
+      await fetch(REQUEST_CHANGE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify({
+          course_id:   _currentCourse.id,
+          change_type: 'update_module_title',
+          target_id:   String(moduleId),
+          payload:     JSON.stringify({ title: newTitle }),
+        }),
+      });
+      showToastEdit('✅ Titre du module mis à jour !');
+    } catch(e) { showToastEdit('❌ Erreur mise à jour titre'); }
+  }
+
+  // Demande suppression chapitre
+  async function requestDeleteChapter(ch) {
+    if (!confirm(`Demander la suppression du chapitre "${ch.title}" ?`)) return;
+    const token = getToken();
+    try {
+      await fetch(REQUEST_CHANGE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify({
+          course_id:   _currentCourse.id,
+          change_type: 'delete_chapter',
+          target_id:   String(ch.id),
+          target_type: 'chapter',
+          payload:     JSON.stringify({ title: ch.title }),
+        }),
+      });
+      _pendingRequests.push({ change_type: 'delete_chapter', target_id: String(ch.id), target_type: 'chapter', status: 'pending', payload: JSON.stringify({ title: ch.title }), requested_at: Date.now() });
+      fillStructureTab();
+      fillDemandesTab();
+      showPopupRequestSent('Votre demande de suppression du chapitre a bien été enregistrée.');
+    } catch(e) { showToastEdit('❌ Erreur envoi demande'); }
+  }
+
+  // Demande suppression module
+  async function requestDeleteModule(mod, ch) {
+    if (!confirm(`Demander la suppression du module "${mod.title}" ?`)) return;
+    const token = getToken();
+    try {
+      await fetch(REQUEST_CHANGE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify({
+          course_id:   _currentCourse.id,
+          change_type: 'delete_module',
+          target_id:   String(mod.id),
+          target_type: 'module',
+          payload:     JSON.stringify({ title: mod.title, chapter_title: ch.title }),
+        }),
+      });
+      _pendingRequests.push({ change_type: 'delete_module', target_id: String(mod.id), target_type: 'module', status: 'pending', payload: JSON.stringify({ title: mod.title }), requested_at: Date.now() });
+      fillStructureTab();
+      fillDemandesTab();
+      showPopupRequestSent('Votre demande de suppression du module a bien été enregistrée.');
+    } catch(e) { showToastEdit('❌ Erreur envoi demande'); }
+  }
+
+  // Demande ajout module — ouvre une mini popup inline
+  function requestAddModule(ch) {
+    const title = prompt('Titre du nouveau module :');
+    if (!title?.trim()) return;
+    const token = getToken();
+    fetch(REQUEST_CHANGE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({
+        course_id:        _currentCourse.id,
+        change_type:      'add_module',
+        target_id:        String(ch.id),
+        target_type:      'chapter',
+        payload:          JSON.stringify({ module_title: title.trim(), chapter_title: ch.title, chapter_temp_id: ch.chapter_temp_id }),
+      }),
+    }).then(res => {
+      if (!res.ok) throw new Error();
+      _pendingRequests.push({ change_type: 'add_module', target_id: String(ch.id), target_type: 'chapter', status: 'pending', payload: JSON.stringify({ module_title: title.trim() }), requested_at: Date.now() });
+
+      // Afficher le module grisé dans la liste
+      const fakeModule = { id: 'pending-' + Date.now(), title: title.trim(), _pendingAdd: true, chapter_temp_id: ch.chapter_temp_id, order_index: 999 };
+      _currentModules.push(fakeModule);
+      fillStructureTab();
+      fillDemandesTab();
+      showPopupRequestSent('Votre demande d\'ajout de module a bien été enregistrée. Elle sera traitée prochainement.');
+    }).catch(() => showToastEdit('❌ Erreur envoi demande'));
+  }
+
+  // ============================================================
+  // REMPLACEMENT VIDÉO
+  // ============================================================
+  function openReplaceVideoPopup(moduleId) {
+    document.getElementById('replace-video-module-id').value = moduleId;
+    document.getElementById('replace-video-new-uri').value = '';
+    document.getElementById('replace-status-text').textContent = '';
+    document.getElementById('replace-progress-bar').style.display = 'none';
+    document.getElementById('replace-video-submit-btn').disabled = true;
+    document.getElementById('popup-replace-video')?.classList.add('active');
+  }
+
+  function initReplaceVideoUpload(courseId) {
+    const fileInput = document.getElementById('replace-video-file');
+    const submitBtn = document.getElementById('replace-video-submit-btn');
+    if (!fileInput) return;
+
+    fileInput.addEventListener('change', async function () {
+      const file = this.files[0];
+      if (!file) return;
+      const token = getToken();
+      const moduleId = document.getElementById('replace-video-module-id').value;
+      const statusEl = document.getElementById('replace-status-text');
+      const progressBar = document.getElementById('replace-progress-bar');
+      const progressFill = document.getElementById('replace-progress-fill');
+
+      statusEl.textContent = 'Préparation…';
+      progressBar.style.display = 'block';
+      progressFill.style.width = '0%';
+      submitBtn.disabled = true;
+
+      try {
+        // Init upload Vimeo
+        const initRes = await fetch(VIMEO_UPLOAD_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify({ course_id: courseId, module_temp_id: 'replace-' + moduleId, file_name: file.name, file_size: file.size }),
+        });
+        if (!initRes.ok) throw new Error('Erreur init Vimeo');
+        const { upload_link, vimeo_uri } = await initRes.json();
+
+        statusEl.textContent = 'Upload… 0%';
+        let offset = 0;
+        while (offset < file.size) {
+          const chunk = file.slice(offset, offset + CHUNK_SIZE);
+          const res = await fetch(upload_link, {
+            method: 'PATCH',
+            headers: { 'Tus-Resumable': '1.0.0', 'Upload-Offset': String(offset), 'Content-Type': 'application/offset+octet-stream', 'Content-Length': String(chunk.size) },
+            body: chunk,
+          });
+          if (!res.ok && res.status !== 204) throw new Error('Upload échoué');
+          offset += chunk.size;
+          const pct = Math.min(Math.round((offset / file.size) * 100), 99);
+          progressFill.style.width = pct + '%';
+          statusEl.textContent = 'Upload… ' + pct + '%';
+        }
+
+        // Finaliser
+        await fetch(VIMEO_FINALIZE_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify({ vimeo_uri, module_temp_id: 'replace-' + moduleId }),
+        });
+
+        document.getElementById('replace-video-new-uri').value = vimeo_uri;
+        progressFill.style.width = '100%';
+        statusEl.textContent = '✅ Vidéo prête — cliquez sur "Soumettre"';
+        submitBtn.disabled = false;
+      } catch(e) {
+        statusEl.textContent = '❌ ' + e.message;
+        progressFill.style.width = '100%';
+        progressFill.classList.add('error');
+      }
+    });
+
+    submitBtn.addEventListener('click', async function () {
+      const token = getToken();
+      const moduleId = document.getElementById('replace-video-module-id').value;
+      const newUri   = document.getElementById('replace-video-new-uri').value;
+      if (!newUri) return;
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Envoi…';
+
+      try {
+        await fetch(REQUEST_CHANGE_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify({
+            course_id:   _currentCourse.id,
+            change_type: 'replace_video',
+            target_id:   String(moduleId),
+            target_type: 'module',
+            payload:     JSON.stringify({ new_vimeo_uri: newUri }),
+          }),
+        });
+        _pendingRequests.push({ change_type: 'replace_video', target_id: String(moduleId), target_type: 'module', status: 'pending', payload: JSON.stringify({ new_vimeo_uri: newUri }), requested_at: Date.now() });
+        document.getElementById('popup-replace-video')?.classList.remove('active');
+        fillStructureTab();
+        fillDemandesTab();
+        showPopupRequestSent('Votre demande de remplacement de vidéo a bien été enregistrée. L\'ancienne vidéo reste visible jusqu\'à validation.');
+      } catch(e) {
+        showToastEdit('❌ Erreur envoi demande');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Soumettre la demande';
+      }
+    });
+  }
+
+  // ============================================================
+  // SKILLS
+  // ============================================================
+  function renderEditSkills() {
+    const list = document.getElementById('edit-skills-list');
+    const hidden = document.getElementById('edit-skills-hidden');
+    if (!list) return;
+    list.innerHTML = '';
+    _editSkills.forEach((skill, i) => {
+      const tag = document.createElement('div');
+      tag.className = 'edit-tag-item';
+      tag.innerHTML = `<span>${skill}</span><span class="edit-tag-remove" data-index="${i}">✕</span>`;
+      list.appendChild(tag);
+    });
+    if (hidden) hidden.value = JSON.stringify(_editSkills);
+  }
+
+  function initSkillsEdit() {
+    const input  = document.getElementById('edit-skill-input');
+    const addBtn = document.getElementById('edit-skill-add-btn');
+    const list   = document.getElementById('edit-skills-list');
+
+    if (addBtn) addBtn.onclick = () => {
+      const val = input?.value.trim();
+      if (!val || _editSkills.includes(val) || _editSkills.length >= 6) { if(input) input.value=''; return; }
+      _editSkills.push(val);
+      if (input) input.value = '';
+      renderEditSkills();
+    };
+
+    if (list) list.addEventListener('click', e => {
+      if (e.target.classList.contains('edit-tag-remove')) {
+        _editSkills.splice(parseInt(e.target.dataset.index), 1);
+        renderEditSkills();
+      }
+    });
+  }
+
+  // ============================================================
+  // FAQ
+  // ============================================================
+  function renderEditFaq() {
+    const list   = document.getElementById('edit-faq-list');
+    const hidden = document.getElementById('edit-faq-hidden');
+    if (!list) return;
+    list.innerHTML = '';
+    _editFaq.forEach((item, i) => {
+      const div = document.createElement('div');
+      div.className = 'edit-faq-item';
+      div.innerHTML = `
+        <div class="edit-faq-q">${item.question}</div>
+        <div class="edit-faq-a">${item.answer}</div>
+        <button class="edit-faq-remove" data-index="${i}">✕</button>
+      `;
+      list.appendChild(div);
+    });
+    if (hidden) hidden.value = JSON.stringify(_editFaq);
+  }
+
+  function initFaqEdit() {
+    const list = document.getElementById('edit-faq-list');
+    const addBtn = document.getElementById('edit-faq-add-btn');
+
+    if (addBtn) addBtn.onclick = () => {
+      const q = document.getElementById('edit-faq-q')?.value.trim();
+      const a = document.getElementById('edit-faq-a')?.value.trim();
+      if (!q || !a) return;
+      _editFaq.push({ question: q, answer: a });
+      document.getElementById('edit-faq-q').value = '';
+      document.getElementById('edit-faq-a').value = '';
+      renderEditFaq();
+    };
+
+    if (list) list.addEventListener('click', e => {
+      if (e.target.classList.contains('edit-faq-remove')) {
+        _editFaq.splice(parseInt(e.target.dataset.index), 1);
+        renderEditFaq();
+      }
+    });
+  }
+
+  // ============================================================
+  // UPLOAD IMAGES
+  // ============================================================
+  function initImageUpload(fileInputId, previewId, hiddenId, statusId) {
+    const fileInput = document.getElementById(fileInputId);
+    if (!fileInput) return;
+    fileInput.addEventListener('change', async function () {
+      const file = this.files[0];
+      if (!file) return;
+      const token    = getToken();
+      const statusEl = document.getElementById(statusId);
+      if (statusEl) statusEl.textContent = '⏳ Upload…';
+
+      const fd = new FormData();
+      fd.append('file', file);
+      try {
+        const res  = await fetch(UPLOAD_URL, { method: 'POST', headers: token ? { Authorization: 'Bearer ' + token } : {}, body: fd });
+        const data = await res.json();
+        const url  = data?.path ? 'https://xmot-l3ir-7kuj.p7.xano.io' + data.path : null;
+        if (url) {
+          const hidden  = document.getElementById(hiddenId);
+          const preview = document.getElementById(previewId);
+          if (hidden)  hidden.value       = url;
+          if (preview) { preview.src = url; preview.style.display = 'block'; }
+          if (statusEl) statusEl.textContent = '✅ Uploadé';
+        } else {
+          if (statusEl) statusEl.textContent = '❌ Erreur';
+        }
+      } catch { if (statusEl) statusEl.textContent = '❌ Erreur serveur'; }
+    });
+  }
+
+  // ============================================================
+  // ACTIONS STRUCTURE — init
+  // ============================================================
+  function initStructureActions(courseId) {
+    // Les listeners sont attachés dans fillStructureTab / buildEditModuleEl
+    // Cette fonction est réservée pour des listeners globaux si besoin
+  }
+
+  // ============================================================
+  // HELPERS
+  // ============================================================
+  function setValue(id, val) {
+    const el = document.getElementById(id);
+    if (el) el.value = val;
+  }
+
+  function showToastEdit(msg) {
+    // Réutilise le toast existant ou en crée un
+    let t = document.getElementById('builder-toast') || document.getElementById('edit-toast');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'edit-toast';
+      t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#111112;color:#fff;padding:10px 22px;border-radius:10px;font-family:DM Sans,sans-serif;font-size:.82rem;font-weight:500;z-index:99999;opacity:0;pointer-events:none;transition:opacity .3s;white-space:nowrap;';
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.style.opacity = '1';
+    setTimeout(() => { t.style.opacity = '0'; }, 2800);
+  }
+
+  function showPopupRequestSent(msg) {
+    const msgEl = document.getElementById('popup-request-sent-msg');
+    if (msgEl) msgEl.textContent = msg;
+    document.getElementById('popup-request-sent')?.classList.add('active');
+  }
+
+  // Fermeture popups au clic extérieur
+  document.addEventListener('DOMContentLoaded', function () {
+    ['popup-pending-validation','popup-changes-pending','popup-replace-video','popup-request-sent'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('click', e => { if (e.target === el) el.classList.remove('active'); });
+    });
+  });
+
+})();
