@@ -1777,8 +1777,14 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     if (!res.ok) throw new Error('Erreur envoi demande (' + res.status + ')');
     const data = await res.json();
-    // Ajouter localement pour mise à jour immédiate de l'UI
-    _allRequests.push(Object.assign({ id: data.id || Date.now(), requested_at: Date.now() }, body));
+
+    // ✅ Refresh localStorage puis recharger _allRequests depuis la source de vérité
+    await refreshAuth();
+    const authData = getAuth();
+    const courseId = _currentCourse.id;
+    _allRequests = (authData?.freelance?.course_change_request || [])
+      .filter(r => r.courses_id === courseId || r.courses_id === String(courseId));
+
     return data;
   }
 
