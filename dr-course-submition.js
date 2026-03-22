@@ -1541,7 +1541,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
 
 
-
 // ============================================================
 // ÉDITION COURS PUBLIÉ — openCourseEdit()
 // À ajouter à la fin du grand script dr-course.js
