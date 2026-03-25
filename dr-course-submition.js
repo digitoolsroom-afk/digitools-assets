@@ -25,8 +25,9 @@ window.triggerCreateCourse = async function (payload, token, onSuccess, onError)
     price_cents:       Math.round((parseFloat(payload.prix_ht) || 0) * 100),
     duration_minutes:  parseInt(payload.duree_minutes) || 0,
     modules_count:     parseInt(payload.nb_modules)    || 0,
-    skills:            Array.isArray(payload.competences) ? payload.competences : [],
-    faq:               Array.isArray(payload.faq)        ? payload.faq         : [],
+    skills:            Array.isArray(payload.competences)    ? payload.competences    : [],
+    faq:               Array.isArray(payload.faq)            ? payload.faq            : [],
+    public_target:     Array.isArray(payload.public_target)  ? payload.public_target  : [],
   };
 
   try {
@@ -239,6 +240,41 @@ window.initCourseStep1 = function () {
   compInput?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addCompetence(); } });
 
   // ============================================================
+  // PUBLIC TARGET
+  // ============================================================
+  const pubTargetInput  = document.getElementById('public-target-input');
+  const pubTargetAddBtn = document.getElementById('public-target-add-btn');
+  const pubTargetTags   = document.getElementById('public-target-tags');
+  const pubTargetHidden = document.getElementById('public-target-hidden');
+  let publicTargets     = [];
+
+  function renderPublicTargets() {
+    if (!pubTargetTags) return;
+    pubTargetTags.innerHTML = '';
+    publicTargets.forEach((item, i) => {
+      const tag = document.createElement('div');
+      tag.className = 'tag-item';
+      tag.innerHTML = `<span>${item}</span><span class="tag-remove" data-index="${i}">✕</span>`;
+      pubTargetTags.appendChild(tag);
+    });
+    if (pubTargetHidden) pubTargetHidden.value = JSON.stringify(publicTargets);
+  }
+
+  function addPublicTarget() {
+    const val = pubTargetInput?.value.trim();
+    if (!val || publicTargets.includes(val) || publicTargets.length >= 6) { if (pubTargetInput) pubTargetInput.value = ''; return; }
+    publicTargets.push(val);
+    if (pubTargetInput) pubTargetInput.value = '';
+    renderPublicTargets();
+  }
+
+  pubTargetTags?.addEventListener('click', e => {
+    if (e.target.classList.contains('tag-remove')) { publicTargets.splice(parseInt(e.target.dataset.index), 1); renderPublicTargets(); }
+  });
+  pubTargetAddBtn?.addEventListener('click', addPublicTarget);
+  pubTargetInput?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addPublicTarget(); } });
+
+  // ============================================================
   // RICH TEXT
   // ============================================================
   const editor     = document.getElementById('formation-desc-longue');
@@ -424,6 +460,7 @@ window.initCourseStep1 = function () {
       description_longue: document.getElementById('formation-desc-longue-hidden')?.value,
       formateur:          document.getElementById('formation-formateur')?.value.trim(),
       faq:                JSON.parse(document.getElementById('faq-hidden')?.value || '[]'),
+      public_target:      JSON.parse(document.getElementById('public-target-hidden')?.value || '[]'),
     };
 
     window.triggerCreateCourse(
@@ -615,6 +652,14 @@ window.initCourseBuilder = function () {
     window._draftRestore = null;
   } else {
     initChapter0();
+  }
+  // ✅ Restaurer ressources_html dans l'éditeur
+  if (window._draftRessourcesHtml) {
+    const editor = document.getElementById('ressources-html');
+    const hidden = document.getElementById('ressources-html-hidden');
+    if (editor) editor.innerHTML = window._draftRessourcesHtml;
+    if (hidden) hidden.value = window._draftRessourcesHtml;
+    window._draftRessourcesHtml = null;
   }
   render();
 
@@ -1115,6 +1160,16 @@ window.initCourseBuilder = function () {
       });
     });
 
+    // ✅ Boutons de blocs H2/H3 pour les ressources
+    toolbar?.querySelectorAll('.rt-btn[data-block]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.preventDefault();
+        document.execCommand('formatBlock', false, btn.dataset.block);
+        editor.focus();
+        if (hidden) hidden.value = editor.innerHTML;
+      });
+    });
+
     let savedRange = null;
     linkBtn?.addEventListener('click', e => {
       e.preventDefault();
@@ -1312,6 +1367,11 @@ window.initCourseBuilder = function () {
     if (draftData && draftData.chapters && draftData.course) {
       window._draftRestore = buildRestoreData(draftData);
     }
+    // ✅ Restaurer ressources_html si présent dans le brouillon
+    const draftCourse = courseDraft[0];
+    if (draftCourse?.ressources_html) {
+      window._draftRessourcesHtml = draftCourse.ressources_html;
+    }
     show('step2-title');
     show('step2-desc');
     show('step2-root');
@@ -1393,8 +1453,14 @@ window.initCourseBuilder = function () {
       const avgNote        = item.average_notation || 0;
       const nbNotes        = item.nb_notation      || 0;
 
-      const statusLabel = status === 'published' ? '✅ Publié' : '⏳ En cours de validation';
-      const statusClass = status === 'published' ? 'pub-badge-published' : 'pub-badge-pending';
+      // ✅ Badge rejeté avec message
+      const isRejected = status === 'rejected';
+      const statusLabel = status === 'published' ? '✅ Publié'
+        : status === 'rejected' ? '✕ Rejeté'
+        : '⏳ En cours de validation';
+      const statusClass = status === 'published' ? 'pub-badge-published'
+        : status === 'rejected' ? 'pub-badge-rejected'
+        : 'pub-badge-pending';
       const ratingHtml  = nbNotes >= 1
         ? `<span class="pub-card-badge">⭐ ${Number(avgNote).toFixed(1)} (${nbNotes} avis)</span>`
         : '';
@@ -1420,7 +1486,9 @@ window.initCourseBuilder = function () {
         </div>
         <div class="pub-card-actions">
           <button class="pub-btn-edit" data-course-id="${item.id}">✏️ Modifier</button>
-        </div>`;
+        </div>
+        ${isRejected && item.rejection_message ? `<div class="pub-rejection-msg">💬 ${esc(item.rejection_message)}</div>` : ''}
+      `;
       card.querySelector('.pub-btn-edit').addEventListener('click', () => {
         if (typeof window.openCourseEdit === 'function') window.openCourseEdit(item);
       });
@@ -1567,8 +1635,9 @@ document.addEventListener('DOMContentLoaded', function() {
   let _currentChapters = [];
   let _currentModules  = [];
   let _allRequests     = []; // toutes les demandes (draft + pending + approved + rejected)
-  let _editSkills      = [];
-  let _editFaq         = [];
+  let _editSkills       = [];
+  let _editFaq          = [];
+  let _editPublicTarget = [];
   let _sessionId       = null; // généré à l'ouverture, partagé par toutes les demandes draft
 
   const REQUIRED_TITLES = ['Présentation de la formation', 'Présentation du formateur', 'Plan de la formation'];
@@ -1806,7 +1875,13 @@ document.addEventListener('DOMContentLoaded', function() {
     setValue('edit-theme',         c.theme             || '');
     setValue('edit-title',         c.title             || '');
     setValue('edit-desc-short',    c.description_short || '');
-    setValue('edit-desc-long',     c.description_long  || '');
+    // ✅ Description longue en rich text — injecter dans le contenteditable
+    const descLongEl = document.getElementById('edit-desc-long');
+    if (descLongEl) {
+      descLongEl.innerHTML = c.description_long || '';
+      const descLongHidden = document.getElementById('edit-desc-long-hidden');
+      if (descLongHidden) descLongHidden.value = c.description_long || '';
+    }
     setValue('edit-trainer-bio',   c.trainer_bio       || '');
     setValue('edit-duration',      c.duration_minutes  || '');
     setValue('edit-modules-count', c.modules_count     || '');
@@ -1822,16 +1897,31 @@ document.addEventListener('DOMContentLoaded', function() {
     if (coverPreview && c.cover_url) { coverPreview.src = c.cover_url; coverPreview.style.display = 'block'; }
     setValue('edit-cover-url', c.cover_url || '');
 
-    _editSkills = Array.isArray(c.skills) ? [...c.skills] : [];
-    _editFaq    = Array.isArray(c.faq)    ? [...c.faq]    : [];
+    // ✅ Lire depuis les tables liées si dispo, sinon fallback sur les champs directs
+    const faqSource    = Array.isArray(c._course_faq_of_courses)          && c._course_faq_of_courses.length
+      ? c._course_faq_of_courses.map(f => ({ question: f.question, answer: f.response || f.answer || '' }))
+      : (Array.isArray(c.faq) ? c.faq : []);
+    const skillsSource = Array.isArray(c._course_skills_of_courses)       && c._course_skills_of_courses.length
+      ? c._course_skills_of_courses.map(s => s.content)
+      : (Array.isArray(c.skills) ? c.skills : []);
+    const pubTargetSource = Array.isArray(c._course_public_target_of_courses) && c._course_public_target_of_courses.length
+      ? c._course_public_target_of_courses.map(p => p.content)
+      : (Array.isArray(c.public_target) ? c.public_target : []);
+
+    _editSkills      = skillsSource;
+    _editFaq         = faqSource;
+    _editPublicTarget = pubTargetSource;
 
     renderEditSkills();
     renderEditFaq();
+    renderEditPublicTarget();
 
     initImageUpload('edit-icon-file',  'edit-icon-preview',  'edit-icon-url',  'edit-icon-status');
     initImageUpload('edit-cover-file', 'edit-cover-preview', 'edit-cover-url', 'edit-cover-status');
     initSkillsEdit();
     initFaqEdit();
+    initPublicTargetEdit();
+    initDescLongEditor();
   }
 
   // ============================================================
@@ -2255,12 +2345,13 @@ document.addEventListener('DOMContentLoaded', function() {
         cover_url:            (document.getElementById('edit-cover-url')?.value    || '').trim(),
         icon_url:             (document.getElementById('edit-icon-url')?.value     || '').trim(),
         description_short:    (document.getElementById('edit-desc-short')?.value   || '').trim(),
-        description_long:     (document.getElementById('edit-desc-long')?.value    || '').trim(),
+        description_long:     (document.getElementById('edit-desc-long-hidden')?.value || document.getElementById('edit-desc-long')?.innerHTML || '').trim(),
         trainer_bio:          (document.getElementById('edit-trainer-bio')?.value  || '').trim(),
         duration_minutes:     parseInt(document.getElementById('edit-duration')?.value)      || 0,
         modules_count:        parseInt(document.getElementById('edit-modules-count')?.value) || 0,
         skills:               _editSkills,
         faq:                  _editFaq,
+        public_target:        _editPublicTarget,
         freelance_profile_id: _currentCourse?.freelancer_profile_id || null,
         new_price_cents:      newPriceCents,
         asking_new_price:     askingNewPrice,
@@ -2657,6 +2748,40 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   // ============================================================
+  // PUBLIC TARGET
+  // ============================================================
+  function renderEditPublicTarget() {
+    const list   = document.getElementById('edit-public-target-list');
+    const hidden = document.getElementById('edit-public-target-hidden');
+    if (!list) return;
+    list.innerHTML = '';
+    _editPublicTarget.forEach((item, i) => {
+      const tag = document.createElement('div'); tag.className = 'edit-tag-item';
+      tag.innerHTML = `<span>${item}</span><span class="edit-tag-remove" data-index="${i}">✕</span>`;
+      list.appendChild(tag);
+    });
+    if (hidden) hidden.value = JSON.stringify(_editPublicTarget);
+  }
+
+  function initPublicTargetEdit() {
+    const input  = document.getElementById('edit-public-target-input');
+    const addBtn = document.getElementById('edit-public-target-add-btn');
+    const list   = document.getElementById('edit-public-target-list');
+    if (addBtn) addBtn.onclick = () => {
+      const val = input?.value.trim();
+      if (!val || _editPublicTarget.includes(val) || _editPublicTarget.length >= 6) { if (input) input.value = ''; return; }
+      _editPublicTarget.push(val); if (input) input.value = ''; renderEditPublicTarget();
+    };
+    if (list && !list._pubTargetListenerAttached) {
+      list._pubTargetListenerAttached = true;
+      list.addEventListener('click', e => {
+        const btn = e.target.closest('.edit-tag-remove');
+        if (btn) { const idx = parseInt(btn.dataset.index); if (!isNaN(idx)) { _editPublicTarget.splice(idx, 1); renderEditPublicTarget(); } }
+      });
+    }
+  }
+
+  // ============================================================
   // FAQ
   // ============================================================
   function renderEditFaq() {
@@ -2691,6 +2816,33 @@ document.addEventListener('DOMContentLoaded', function() {
         if (btn) { const idx = parseInt(btn.dataset.index); if (!isNaN(idx)) { _editFaq.splice(idx, 1); renderEditFaq(); } }
       });
     }
+  }
+
+  // ============================================================
+  // RICH TEXT DESC LONGUE
+  // ============================================================
+  function initDescLongEditor() {
+    const editor = document.getElementById('edit-desc-long');
+    const hidden = document.getElementById('edit-desc-long-hidden');
+    if (!editor || editor._rtBound) return;
+    editor._rtBound = true;
+    editor.addEventListener('input', () => { if (hidden) hidden.value = editor.innerHTML; });
+    document.querySelectorAll('.edit-rt-btn[data-cmd]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.preventDefault();
+        document.execCommand(btn.dataset.cmd, false, null);
+        editor.focus();
+        if (hidden) hidden.value = editor.innerHTML;
+      });
+    });
+    document.querySelectorAll('.edit-rt-btn[data-block]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.preventDefault();
+        document.execCommand('formatBlock', false, btn.dataset.block);
+        editor.focus();
+        if (hidden) hidden.value = editor.innerHTML;
+      });
+    });
   }
 
   // ============================================================
