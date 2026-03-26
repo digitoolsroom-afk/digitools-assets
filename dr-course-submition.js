@@ -1304,7 +1304,8 @@ window.initCourseBuilder = function () {
             document.getElementById(id)?.classList.remove('is-visible');
           });
 
-          const publishedData = meData?.freelance?.course_published || [];
+          const publishedData  = meData?.freelance?.course_published         || [];
+          window._publishedItems = meData?.freelance?.published_item_by_course || [];
           if (typeof window.renderPublishedSection === 'function') {
             window.renderPublishedSection(publishedData);
           }
@@ -1345,7 +1346,9 @@ window.initCourseBuilder = function () {
   const courseDraft     = freelance.course_draft             || [];
   const coursePublished = freelance.course_published         || [];
   const draftData       = freelance.draft_item_by_course     || null;
+  // ✅ Lire depuis published_item_by_course pour avoir module_count et duration_formation
   const publishedData   = freelance.course_published         || [];
+  const publishedItems  = freelance.published_item_by_course || [];
 
   function show(id) { document.getElementById(id)?.classList.add('is-visible'); }
   function hide(id) { document.getElementById(id)?.classList.remove('is-visible'); }
@@ -1377,6 +1380,7 @@ window.initCourseBuilder = function () {
     window.initCourseBuilder();
 
     if (coursePublished.length > 0) {
+      window._publishedItems = publishedItems;
       renderPublishedSection(publishedData);
       show('section-published');
     }
@@ -1384,6 +1388,7 @@ window.initCourseBuilder = function () {
   }
 
   if (coursePublished.length > 0) {
+    window._publishedItems = publishedItems;
     renderPublishedSection(publishedData);
     show('section-published');
     const addBtn = document.getElementById('freelance--add-formation-submit-btn');
@@ -1446,8 +1451,12 @@ window.initCourseBuilder = function () {
       const coverUrl       = item.cover_url        || '';
       const iconUrl        = item.icon_cours_url   || '';
       const status         = item.status           || 'pending_validation';
-      const totalMods      = item.modules_count    || 0;
-      const totalDurMin    = item.duration_minutes || 0;
+      // ✅ Lire depuis published_item_by_course si dispo, sinon fallback sur course_published
+      const pubItem     = (window._publishedItems || []).find(pi => pi.course_id === item.id) || {};
+      const totalMods   = pubItem.module_count    || item.modules_count    || 0;
+      const totalDurMin = pubItem.duration_formation
+        ? Math.round(pubItem.duration_formation / 60)
+        : (item.duration_minutes || 0);
       const nbParticipants = item.nb_participants  || 0;
       const avgNote        = item.average_notation || 0;
       const nbNotes        = item.nb_notation      || 0;
