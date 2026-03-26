@@ -1982,38 +1982,8 @@ document.addEventListener('DOMContentLoaded', function() {
         if (hidden) hidden.value = editor.innerHTML;
       });
     });
-    // Bouton sauvegarder ressources
-    const saveBtn = document.getElementById('edit-save-ressources-btn');
-    if (saveBtn && !saveBtn._bound) {
-      saveBtn._bound = true;
-      saveBtn.addEventListener('click', async () => {
-        const token = getToken();
-        saveBtn.disabled = true; saveBtn.textContent = '⏳…';
-        try {
-          const res = await fetch(MODIFY_INFO_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-            body: JSON.stringify({
-              course_id: _currentCourse.id,
-              ressources_html: hidden?.value || '',
-              // Garder les autres champs inchangés
-              theme: _currentCourse.theme, title: _currentCourse.title,
-              cover_url: _currentCourse.cover_url, icon_url: _currentCourse.icon_cours_url,
-              description_short: _currentCourse.description_short,
-              description_long: _currentCourse.description_long,
-              trainer_bio: _currentCourse.trainer_bio,
-              skills: _editSkills, faq: _editFaq, public_target: _editPublicTarget,
-              freelance_profile_id: _currentCourse.freelancer_profile_id,
-              new_price_cents: 0, asking_new_price: false,
-            }),
-          });
-          if (!res.ok) throw new Error('Erreur');
-          showToastEdit('✅ Ressources sauvegardées !');
-          _currentCourse.ressources_html = hidden?.value || '';
-        } catch { showToastEdit('❌ Erreur sauvegarde ressources'); }
-        finally { saveBtn.disabled = false; saveBtn.textContent = '💾 Sauvegarder les ressources'; }
-      });
-    }
+    // ✅ Ressources sauvegardées via le bouton principal "Enregistrer les modifications"
+    // Pas de bouton séparé nécessaire
   }
 
   function fillStructureTab() {
@@ -2347,26 +2317,33 @@ document.addEventListener('DOMContentLoaded', function() {
 
       const targetEl = document.createElement('div'); targetEl.className = 'edit-request-target';
       try {
-        const p = typeof req.payload === 'object' ? req.payload : JSON.parse(req.payload || '{}');
-        // ✅ Afficher plus d'infos selon le type
+        // ✅ Le payload depuis Xano est une string JSON — parser dans tous les cas
+        let p = {};
+        if (req.payload) {
+          p = typeof req.payload === 'string' ? JSON.parse(req.payload) : req.payload;
+        }
         let targetText = '';
-        if (req.change_type === 'delete_chapter' || req.change_type === 'delete_module') {
-          targetText = p.title ? `"${p.title}"` : `ID: ${req.target_id}`;
-          if (p.chapter_title && req.change_type === 'delete_module') targetText += ` (dans "${p.chapter_title}")`;
+        if (req.change_type === 'delete_chapter') {
+          targetText = p.title ? `"${p.title}"` : `Chapitre ID: ${req.target_id}`;
+        } else if (req.change_type === 'delete_module') {
+          targetText = p.title ? `"${p.title}"` : `Module ID: ${req.target_id}`;
+          if (p.chapter_title) targetText += ` — chapitre "${p.chapter_title}"`;
         } else if (req.change_type === 'add_module') {
           targetText = p.module_title ? `"${p.module_title}"` : '—';
           if (p.chapter_title) targetText += ` → dans "${p.chapter_title}"`;
+          if (p.duration_seconds) targetText += ` (${Math.floor(p.duration_seconds/60)}min)`;
         } else if (req.change_type === 'add_chapter') {
           targetText = p.chapter_title ? `"${p.chapter_title}"` : '—';
           if (p.duration_minutes) targetText += ` · ${p.duration_minutes} min`;
+          if (p.nb_modules) targetText += ` · ${p.nb_modules} modules`;
         } else if (req.change_type === 'replace_video') {
           targetText = `Module ID: ${req.target_id}`;
-          if (p.new_vimeo_uri) targetText += ` → ${p.new_vimeo_uri}`;
+          if (p.new_vimeo_uri) targetText += ` → nouvelle vidéo`;
         } else {
           targetText = p.title || p.module_title || p.chapter_title || `ID: ${req.target_id}`;
         }
-        targetEl.textContent = targetText;
-      } catch { targetEl.textContent = `ID: ${req.target_id}`; }
+        targetEl.textContent = targetText || `ID: ${req.target_id}`;
+      } catch(e) { targetEl.textContent = `ID: ${req.target_id}`; }
       row.appendChild(targetEl);
 
       const dateEl = document.createElement('div'); dateEl.className = 'edit-request-date';
@@ -2437,6 +2414,7 @@ document.addEventListener('DOMContentLoaded', function() {
         skills:               _editSkills,
         faq:                  _editFaq,
         public_target:        _editPublicTarget,
+        ressources_html:      (document.getElementById('edit-ressources-html-hidden')?.value || '').trim(),
         freelance_profile_id: _currentCourse?.freelancer_profile_id || null,
         new_price_cents:      newPriceCents,
         asking_new_price:     askingNewPrice,
