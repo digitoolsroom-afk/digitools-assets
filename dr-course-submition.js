@@ -1453,10 +1453,8 @@ window.initCourseBuilder = function () {
       const status         = item.status           || 'pending_validation';
       // ✅ Lire depuis published_item_by_course si dispo, sinon fallback sur course_published
       const pubItem     = (window._publishedItems || []).find(pi => pi.course_id === item.id) || {};
-      const totalMods   = pubItem.module_count    || item.modules_count    || 0;
-      const totalDurMin = pubItem.duration_formation
-        ? Math.round(pubItem.duration_formation / 60)
-        : (item.duration_minutes || 0);
+      const totalMods   = pubItem.module_count      || item.modules_count    || 0;
+      const totalDurMin = pubItem.duration_formation || item.duration_minutes || 0;
       const nbParticipants = item.nb_participants  || 0;
       const avgNote        = item.average_notation || 0;
       const nbNotes        = item.nb_notation      || 0;
@@ -1532,8 +1530,23 @@ window.initCourseBuilder = function () {
   `;
   document.body.appendChild(popup);
 
-  document.getElementById('btn-publish-confirm-close')?.addEventListener('click', () => {
+  document.getElementById('btn-publish-confirm-close')?.addEventListener('click', async () => {
     popup.classList.remove('active');
+    // ✅ Refresh user_full_data puis recharger la page proprement
+    const auth  = JSON.parse(localStorage.getItem('auth') || '{}');
+    const token = auth?.authToken || auth?.token || auth?.jwt || null;
+    if (token) {
+      try {
+        const meRes = await fetch('https://xmot-l3ir-7kuj.p7.xano.io/api:uFugjjm6/user_full_data', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (meRes.ok) {
+          const meData = await meRes.json();
+          localStorage.setItem('auth', JSON.stringify(Object.assign({}, auth, meData)));
+        }
+      } catch(e) { console.warn('Refresh failed:', e); }
+    }
+    window.location.reload();
   });
   popup.addEventListener('click', e => {
     if (e.target === popup) popup.classList.remove('active');
