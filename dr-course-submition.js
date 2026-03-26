@@ -2250,7 +2250,7 @@ document.addEventListener('DOMContentLoaded', function() {
       if (!hasReplaceReq) {
         const replBtn = document.createElement('button'); replBtn.className = 'edit-btn-replace-video';
         replBtn.textContent = '🎬 Remplacer vidéo';
-        replBtn.addEventListener('click', () => openReplaceVideoPopup(mod.id));
+        replBtn.addEventListener('click', () => openReplaceVideoPopup(mod.id, mod.title));
         actions.appendChild(replBtn);
       }
 
@@ -2324,21 +2324,17 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         let targetText = '';
         if (req.change_type === 'delete_chapter') {
-          targetText = p.title ? `"${p.title}"` : `Chapitre ID: ${req.target_id}`;
+          targetText = p.title ? `Chapitre : "${p.title}"` : `Chapitre ID: ${req.target_id}`;
         } else if (req.change_type === 'delete_module') {
-          targetText = p.title ? `"${p.title}"` : `Module ID: ${req.target_id}`;
-          if (p.chapter_title) targetText += ` — chapitre "${p.chapter_title}"`;
+          targetText = p.title ? `Module : "${p.title}"` : `Module ID: ${req.target_id}`;
+          if (p.chapter_title) targetText += ` (dans "${p.chapter_title}")`;
         } else if (req.change_type === 'add_module') {
-          targetText = p.module_title ? `"${p.module_title}"` : '—';
+          targetText = p.module_title ? `Module : "${p.module_title}"` : '—';
           if (p.chapter_title) targetText += ` → dans "${p.chapter_title}"`;
-          if (p.duration_seconds) targetText += ` (${Math.floor(p.duration_seconds/60)}min)`;
         } else if (req.change_type === 'add_chapter') {
-          targetText = p.chapter_title ? `"${p.chapter_title}"` : '—';
-          if (p.duration_minutes) targetText += ` · ${p.duration_minutes} min`;
-          if (p.nb_modules) targetText += ` · ${p.nb_modules} modules`;
+          targetText = p.chapter_title ? `Chapitre : "${p.chapter_title}"` : '—';
         } else if (req.change_type === 'replace_video') {
-          targetText = `Module ID: ${req.target_id}`;
-          if (p.new_vimeo_uri) targetText += ` → nouvelle vidéo`;
+          targetText = p.module_title ? `Module : "${p.module_title}"` : `Module ID: ${req.target_id}`;
         } else {
           targetText = p.title || p.module_title || p.chapter_title || `ID: ${req.target_id}`;
         }
@@ -2714,8 +2710,9 @@ document.addEventListener('DOMContentLoaded', function() {
   // ============================================================
   // REMPLACEMENT VIDÉO
   // ============================================================
-  function openReplaceVideoPopup(moduleId) {
-    document.getElementById('replace-video-module-id').value   = moduleId;
+  function openReplaceVideoPopup(moduleId, moduleTitle) {
+    document.getElementById('replace-video-module-id').value    = moduleId;
+    document.getElementById('replace-video-module-title').value = moduleTitle || '';
     document.getElementById('replace-video-new-uri').value     = '';
     document.getElementById('replace-status-text').textContent = '';
     document.getElementById('replace-progress-bar').style.display = 'none';
@@ -2767,7 +2764,8 @@ document.addEventListener('DOMContentLoaded', function() {
       if (!newUri) return;
       submitBtn.disabled = true; submitBtn.textContent = 'Envoi…';
       try {
-        await sendRequest({ change_type: 'replace_video', target_id: String(moduleId), target_type: 'module', payload: { new_vimeo_uri: newUri } });
+        const moduleTitle = document.getElementById('replace-video-module-title')?.value || '';
+        await sendRequest({ change_type: 'replace_video', target_id: String(moduleId), target_type: 'module', payload: { new_vimeo_uri: newUri, module_title: moduleTitle } });
         document.getElementById('popup-replace-video')?.classList.remove('active');
         fillStructureTab(); fillDemandesTab(); updateSubmitBar();
         showToastEdit('📋 Demande ajoutée — pensez à soumettre !');
