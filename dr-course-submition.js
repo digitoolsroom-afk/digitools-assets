@@ -131,7 +131,7 @@ window.initCourseStep1 = function () {
       : `—&nbsp;€<br><span style="font-size:0.72rem;font-weight:400;opacity:0.75;">Accès à vie à CETTE formation</span>`;
   }
 
-  ['formation-theme','formation-titre','formation-description','formation-duree','formation-modules','formation-prix']
+  ['formation-theme','formation-titre','formation-description','formation-prix']
     .forEach(id => document.getElementById(id)?.addEventListener('input', updatePreview));
 
   updatePreview();
@@ -343,8 +343,7 @@ window.initCourseStep1 = function () {
     { id: 'formation-icon-url',    label: 'Icône du cours',      hidden: true },
     { id: 'formation-description', label: 'Description courte' },
     { id: 'formation-prix',        label: 'Prix HT' },
-    { id: 'formation-duree',       label: 'Durée totale' },
-    { id: 'formation-modules',     label: 'Nombre de modules' },
+
     { id: 'formation-formateur',   label: 'Le formateur' },
   ];
 
@@ -373,7 +372,7 @@ window.initCourseStep1 = function () {
       if (!el) return;
       const val = el.value.trim();
       const isEmpty = !val
-        || (['formation-prix','formation-duree','formation-modules'].includes(field.id) && parseInt(val) <= 0);
+        || (field.id === 'formation-prix' && parseInt(val) <= 0);
 
       if (isEmpty) {
         valid = false;
@@ -454,8 +453,8 @@ window.initCourseStep1 = function () {
       cover_url:          document.getElementById('formation-cover-url')?.value.trim(),
       description:        document.getElementById('formation-description')?.value.trim(),
       prix_ht:            parseInt(document.getElementById('formation-prix')?.value) || 0,
-      duree_minutes:      parseInt(document.getElementById('formation-duree')?.value) || 0,
-      nb_modules:         parseInt(document.getElementById('formation-modules')?.value) || 0,
+      duree_minutes:      0,
+      nb_modules:         0,
       competences:        JSON.parse(document.getElementById('competences-hidden')?.value || '[]'),
       description_longue: document.getElementById('formation-desc-longue-hidden')?.value,
       formateur:          document.getElementById('formation-formateur')?.value.trim(),
@@ -1765,6 +1764,7 @@ document.addEventListener('DOMContentLoaded', function() {
       initInfosForm(courseId);
       initReplaceVideoUpload(courseId);
       initConfirmModal();
+      initRessourcesEditor();
       updateSubmitBar();
 
     } catch(e) {
@@ -1839,7 +1839,12 @@ document.addEventListener('DOMContentLoaded', function() {
   // ============================================================
   async function sendRequest(payload) {
     const token = getToken();
-    const body  = Object.assign({ session_id: _sessionId, status: 'draft', course_id: _currentCourse.id }, payload);
+    // ✅ Stringifier le payload en JSON avant envoi — Xano attend une string JSON pour ce champ
+    const payloadToSend = Object.assign({}, payload);
+    if (payloadToSend.payload && typeof payloadToSend.payload === 'object') {
+      payloadToSend.payload = JSON.stringify(payloadToSend.payload);
+    }
+    const body  = Object.assign({ session_id: _sessionId, status: 'draft', course_id: _currentCourse.id }, payloadToSend);
     const res = await fetch(REQUEST_CHANGE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
@@ -1944,6 +1949,71 @@ document.addEventListener('DOMContentLoaded', function() {
       console.log('[getRequestFor] _allRequests:', _allRequests.map(r => ({target_id: r.target_id, type: typeof r.target_id, target_type: r.target_type, change_type: r.change_type, status: r.status})));
     }
     return result;
+  }
+
+  function initRessourcesEditor() {
+    const editor = document.getElementById('edit-ressources-html');
+    const hidden = document.getElementById('edit-ressources-html-hidden');
+    if (!editor || editor._resBound) return;
+    editor._resBound = true;
+    // Pré-remplir avec les ressources existantes
+    if (_currentCourse?.ressources_html) {
+      editor.innerHTML = _currentCourse.ressources_html;
+      if (hidden) hidden.value = _currentCourse.ressources_html;
+    }
+    editor.addEventListener('input', () => { if (hidden) hidden.value = editor.innerHTML; });
+    document.querySelectorAll('.edit-rt-btn[data-cmd]').forEach(btn => {
+      if (btn._resBound) return; btn._resBound = true;
+      btn.addEventListener('click', e => {
+        e.preventDefault();
+        if (document.activeElement === editor || editor.contains(document.getSelection()?.anchorNode)) {
+          document.execCommand(btn.dataset.cmd, false, null);
+          editor.focus();
+          if (hidden) hidden.value = editor.innerHTML;
+        }
+      });
+    });
+    document.querySelectorAll('.edit-rt-btn[data-block]').forEach(btn => {
+      if (btn._resBound) return; btn._resBound = true;
+      btn.addEventListener('click', e => {
+        e.preventDefault();
+        document.execCommand('formatBlock', false, btn.dataset.block);
+        editor.focus();
+        if (hidden) hidden.value = editor.innerHTML;
+      });
+    });
+    // Bouton sauvegarder ressources
+    const saveBtn = document.getElementById('edit-save-ressources-btn');
+    if (saveBtn && !saveBtn._bound) {
+      saveBtn._bound = true;
+      saveBtn.addEventListener('click', async () => {
+        const token = getToken();
+        saveBtn.disabled = true; saveBtn.textContent = '⏳…';
+        try {
+          const res = await fetch(MODIFY_INFO_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+            body: JSON.stringify({
+              course_id: _currentCourse.id,
+              ressources_html: hidden?.value || '',
+              // Garder les autres champs inchangés
+              theme: _currentCourse.theme, title: _currentCourse.title,
+              cover_url: _currentCourse.cover_url, icon_url: _currentCourse.icon_cours_url,
+              description_short: _currentCourse.description_short,
+              description_long: _currentCourse.description_long,
+              trainer_bio: _currentCourse.trainer_bio,
+              skills: _editSkills, faq: _editFaq, public_target: _editPublicTarget,
+              freelance_profile_id: _currentCourse.freelancer_profile_id,
+              new_price_cents: 0, asking_new_price: false,
+            }),
+          });
+          if (!res.ok) throw new Error('Erreur');
+          showToastEdit('✅ Ressources sauvegardées !');
+          _currentCourse.ressources_html = hidden?.value || '';
+        } catch { showToastEdit('❌ Erreur sauvegarde ressources'); }
+        finally { saveBtn.disabled = false; saveBtn.textContent = '💾 Sauvegarder les ressources'; }
+      });
+    }
   }
 
   function fillStructureTab() {
@@ -2278,7 +2348,24 @@ document.addEventListener('DOMContentLoaded', function() {
       const targetEl = document.createElement('div'); targetEl.className = 'edit-request-target';
       try {
         const p = typeof req.payload === 'object' ? req.payload : JSON.parse(req.payload || '{}');
-        targetEl.textContent = p.title || p.module_title || p.chapter_title || `ID: ${req.target_id}`;
+        // ✅ Afficher plus d'infos selon le type
+        let targetText = '';
+        if (req.change_type === 'delete_chapter' || req.change_type === 'delete_module') {
+          targetText = p.title ? `"${p.title}"` : `ID: ${req.target_id}`;
+          if (p.chapter_title && req.change_type === 'delete_module') targetText += ` (dans "${p.chapter_title}")`;
+        } else if (req.change_type === 'add_module') {
+          targetText = p.module_title ? `"${p.module_title}"` : '—';
+          if (p.chapter_title) targetText += ` → dans "${p.chapter_title}"`;
+        } else if (req.change_type === 'add_chapter') {
+          targetText = p.chapter_title ? `"${p.chapter_title}"` : '—';
+          if (p.duration_minutes) targetText += ` · ${p.duration_minutes} min`;
+        } else if (req.change_type === 'replace_video') {
+          targetText = `Module ID: ${req.target_id}`;
+          if (p.new_vimeo_uri) targetText += ` → ${p.new_vimeo_uri}`;
+        } else {
+          targetText = p.title || p.module_title || p.chapter_title || `ID: ${req.target_id}`;
+        }
+        targetEl.textContent = targetText;
       } catch { targetEl.textContent = `ID: ${req.target_id}`; }
       row.appendChild(targetEl);
 
@@ -2347,8 +2434,6 @@ document.addEventListener('DOMContentLoaded', function() {
         description_short:    (document.getElementById('edit-desc-short')?.value   || '').trim(),
         description_long:     (document.getElementById('edit-desc-long-hidden')?.value || document.getElementById('edit-desc-long')?.innerHTML || '').trim(),
         trainer_bio:          (document.getElementById('edit-trainer-bio')?.value  || '').trim(),
-        duration_minutes:     parseInt(document.getElementById('edit-duration')?.value)      || 0,
-        modules_count:        parseInt(document.getElementById('edit-modules-count')?.value) || 0,
         skills:               _editSkills,
         faq:                  _editFaq,
         public_target:        _editPublicTarget,
