@@ -119,14 +119,13 @@
     try {
       const res=await fetch(UPLOAD_URL,{method:'POST',headers:{'Authorization':'Bearer '+getToken()},body:fd});
       const data=await res.json();
-      // L'endpoint retourne uploaded_file as self — objet Xano attachment
-      const url = data?.url
-               || data?.path
-               || data?.uploaded_file?.url
-               || data?.uploaded_file?.path
-               || (typeof data === 'object' && data !== null
-                    ? Object.values(data).find(v => typeof v === 'string' && v.startsWith('http'))
-                    : '');
+      // L'endpoint retourne un objet Xano attachment avec un path relatif
+      // On reconstruit l'URL absolue avec la base de l'API Xano
+      const XANO_BASE = 'https://xmot-l3ir-7kuj.p7.xano.io';
+      const rawPath = data?.url || data?.path || data?.uploaded_file?.url || data?.uploaded_file?.path || '';
+      const url = rawPath
+        ? (rawPath.startsWith('http') ? rawPath : XANO_BASE + rawPath)
+        : '';
       if(url) {
         if(hiddenEl) hiddenEl.value=url;
         if(previewEl){ previewEl.src=url; previewEl.style.display='block'; }
@@ -441,3 +440,4 @@
   }
 
 })();
+
