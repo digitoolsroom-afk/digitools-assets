@@ -135,8 +135,25 @@
     const vm = url.match(/vimeo\.com\/(\d+)/);
     if (vm) embed = `https://player.vimeo.com/video/${vm[1]}`;
     if (!embed) { showToast('❌ URL YouTube ou Vimeo non reconnue.', 'error'); return; }
-    restoreRange();
-    document.execCommand('insertHTML', false, `<div class="af-video-embed"><iframe src="${embed}" allowfullscreen></iframe></div>`);
+    // insertHTML ne fonctionne pas bien avec les iframes — on insère le noeud directement
+    rtEditor?.focus();
+    const wrap = document.createElement('div');
+    wrap.className = 'af-video-embed';
+    const iframe = document.createElement('iframe');
+    iframe.src = embed; iframe.allowFullscreen = true; iframe.frameBorder = '0';
+    wrap.appendChild(iframe);
+    // Insérer après la sélection ou à la fin
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount) {
+      const range = sel.getRangeAt(0);
+      range.collapse(false);
+      range.insertNode(wrap);
+      range.setStartAfter(wrap); range.collapse(true);
+      sel.removeAllRanges(); sel.addRange(range);
+    } else {
+      rtEditor.appendChild(wrap);
+    }
+    if (rtHidden) rtHidden.value = rtEditor.innerHTML;
     closeAllRtPopups(); document.getElementById('af-rt-video-url').value = '';
   });
   document.getElementById('af-rt-video-cancel')?.addEventListener('click', closeAllRtPopups);
@@ -277,7 +294,27 @@
     if (e.key === 'Escape') {
       if (resInfoPopup) resInfoPopup.style.display = 'none';
       if (newResPopup)  newResPopup.style.display  = 'none';
+      document.querySelectorAll('.af-ex-popup').forEach(p => p.style.display = 'none');
     }
+  });
+
+  // Popups exemples ressource (titre, titre court, description)
+  document.querySelectorAll('.af-example-trigger').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const popupId = btn.dataset.popup;
+      const popup   = document.getElementById(popupId);
+      if (popup) popup.style.display = 'flex';
+    });
+  });
+  document.querySelectorAll('.af-ex-close').forEach(btn => {
+    btn.addEventListener('click', () => {
+      btn.closest('.af-ex-popup').style.display = 'none';
+    });
+  });
+  document.querySelectorAll('.af-ex-popup').forEach(popup => {
+    popup.addEventListener('click', e => {
+      if (e.target === popup) popup.style.display = 'none';
+    });
   });
 
   /* ── Publier ressource ── */
@@ -331,6 +368,24 @@
       publishResBtn.textContent = '✅ Ressource publiée !';
       // Fermer la popup après succès
       if (newResPopup) newResPopup.style.display = 'none';
+      // Afficher le message "Ressource ajoutée" + mettre en avant le select
+      const addedMsg = document.getElementById('af-res-added-msg');
+      if (addedMsg) addedMsg.style.display = 'flex';
+      const resSel = document.getElementById('af-ressource-select');
+      if (resSel) {
+        resSel.style.borderColor = '#22c55e';
+        resSel.style.boxShadow   = '0 0 0 3px rgba(34,197,94,.2)';
+        // Auto-sélectionner la dernière ressource ajoutée après refresh
+        setTimeout(() => {
+          const opts = resSel.options;
+          if (opts.length > 1) {
+            resSel.selectedIndex = opts.length - 1;
+            resIdInput.value = opts[opts.length - 1].value;
+            resSel.style.borderColor = '';
+            resSel.style.boxShadow   = '';
+          }
+        }, 300);
+      }
       setTimeout(() => { publishResBtn.disabled = false; publishResBtn.textContent = 'Publier la ressource'; }, 2000);
 
     } catch(e) {
