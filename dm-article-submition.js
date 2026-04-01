@@ -184,7 +184,7 @@
   fillCourses();
   courseSelect?.addEventListener('change',()=>{ courseIdInput.value=courseSelect.value; });
 
-  /* ── Toggle ressource ── */
+  /* ── Toggle ressource — ON par défaut ── */
   const toggleRes  = document.getElementById('af-toggle-ressource');
   const resBody    = document.getElementById('af-ressource-body');
   const resSelect  = document.getElementById('af-ressource-select');
@@ -204,11 +204,24 @@
   function fillRessources() {
     const ressources=getAuth()?.freelance?.ressources||[];
     if(!resSelect) return;
-    resSelect.innerHTML='<option value="">— Sélectionner —</option>';
+    resSelect.innerHTML='<option value="">— Sélectionner une ressource —</option>';
     ressources.forEach(r=>{ const o=document.createElement('option'); o.value=r.id; o.textContent=r.short_title||r.title||'Ressource #'+r.id; resSelect.appendChild(o); });
   }
   fillRessources();
-  resSelect?.addEventListener('change',()=>{ resIdInput.value=resSelect.value; });
+  resSelect?.addEventListener('change',()=>{
+    resIdInput.value=resSelect.value;
+    // Auto-clear erreur select ressource
+    clearFieldError(resSelect);
+  });
+
+  /* ── Popup nouvelle ressource ── */
+  const newResPopup      = document.getElementById('af-new-res-popup');
+  const openResPopupBtn  = document.getElementById('af-open-res-popup-btn');
+  const closeResPopupBtn = document.getElementById('af-new-res-popup-close');
+
+  openResPopupBtn?.addEventListener('click', () => { newResPopup.style.display='flex'; });
+  closeResPopupBtn?.addEventListener('click', () => { newResPopup.style.display='none'; });
+  newResPopup?.addEventListener('click', e => { if(e.target===newResPopup) newResPopup.style.display='none'; });
 
   /* ── Popup ressource info ── */
   const resPopup=document.getElementById('af-res-popup');
@@ -254,7 +267,7 @@
   // Nettoie toutes les erreurs du formulaire
   function clearAllErrors() {
     document.querySelectorAll('#section-article-form .af-field-error').forEach(e => e.style.display = 'none');
-    ['af-title','af-short-description','af-category-select','af-course-select',
+    ['af-title','af-short-description','af-category-select','af-course-select','af-ressource-select',
      'af-res-title','af-res-short-title','af-res-link'].forEach(id => {
       const el = document.getElementById(id);
       if (el) { el.style.borderColor=''; el.style.boxShadow=''; }
@@ -323,6 +336,8 @@
       if(rp){rp.src='';rp.style.display='none';} if(rph) rph.style.display='flex';
       document.getElementById('af-res-img-status').textContent='';
       publishResBtn.textContent='✅ Ressource publiée !';
+      // Fermer la popup après succès
+      if(newResPopup) newResPopup.style.display='none';
       setTimeout(()=>{ publishResBtn.disabled=false; publishResBtn.textContent='Publier la ressource'; },2000);
     } catch(e){
       publishResBtn.disabled=false; publishResBtn.textContent='Publier la ressource';
@@ -395,6 +410,11 @@
       setFieldError(courseSelectEl, 'Choisissez un cours ou désactivez le toggle "Lier à un cours".');
       hasError = true;
     }
+    if (is_ressource && !ressource_id) {
+      const resSelectEl = document.getElementById('af-ressource-select');
+      setFieldError(resSelectEl, 'Sélectionnez une ressource ou désactivez le toggle "Ressource associée".');
+      hasError = true;
+    }
 
     if (hasError) {
       scrollToFirstError();
@@ -440,4 +460,5 @@
   }
 
 })();
+
 
