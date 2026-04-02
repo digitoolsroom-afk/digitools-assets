@@ -386,8 +386,7 @@
     const description = document.getElementById('af-res-description')?.value?.trim();
     const short_desc  = document.getElementById('af-res-short-description')?.value?.trim();
     const link        = linkEl?.value?.trim();
-    const url_img     = document.getElementById('af-res-url-img')?.value?.trim();
-
+    
     // Validation inline
     let hasErr = false;
     [titleEl, shortTitleEl, linkEl].forEach(el => clearFieldError(el));
@@ -404,7 +403,7 @@
       const res = await fetch(ADD_RES_URL, {
         method:'POST',
         headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+getToken() },
-        body: JSON.stringify({ freelance_id:getFreelanceId(), title, short_title, description, short_description:short_desc, ressource_link:link, url_img }),
+        body: JSON.stringify({ freelance_id:getFreelanceId(), title, short_title, description, short_description:short_desc, ressource_link:link }),
       });
       if (!res.ok) throw new Error('Erreur ' + res.status);
 
@@ -415,7 +414,7 @@
       fillRessources();
 
       // Reset formulaire ressource
-      ['af-res-title','af-res-short-title','af-res-description','af-res-short-description','af-res-link','af-res-url-img']
+      ['af-res-title','af-res-short-title','af-res-description','af-res-short-description','af-res-link']
         .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
       const rp  = document.getElementById('af-res-img-preview');
       const rph = document.getElementById('af-res-img-placeholder');
