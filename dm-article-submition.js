@@ -719,12 +719,11 @@
 
     if (mktSection) mktSection.style.display = 'none';
     if (mktTopline) mktTopline.style.display  = 'none';
-    section.style.display = 'flex';
+    section.style.display = 'block'; // ← CORRECTION : était 'flex', corrigé en 'block'
 
     renderArticles(articles);
     renderRessources(auth?.freelance?.ressources || []);
 
-    // Appel endpoint stats avec les IDs des articles
     const articleIds = articles.map(a => a.id).filter(Boolean);
     if (articleIds.length > 0) {
       try {
@@ -747,7 +746,6 @@
   }
 
   document.addEventListener('article-published', () => {
-    // Attendre que le formulaire soit complètement caché avant d'afficher la section
     setTimeout(() => {
       if (formSection) formSection.style.display = 'none';
       init();
@@ -814,17 +812,16 @@
           <p class="al-res-title">${res.title || res.short_title || '—'}</p>
           <p class="al-res-meta">${res.short_title || ''}</p>
         </div>
-        <div class="al-article-actions">
-          <button class="al-btn-edit">✏️ Modifier</button>
+        <div class="al-res-actions">
+          <button class="al-btn-edit">✏️ Modifier →</button>
         </div>`;
       item.querySelector('.al-btn-edit').addEventListener('click', () => openEditResPopup(res));
-      item.querySelector('.al-btn-edit').textContent = '✏️ Modifier →';
       resListEl.appendChild(item);
     });
   }
 
   /* ══════════════════════════════════════
-     GRAPHIQUE — vues par heure (24h)
+     GRAPHIQUE
   ══════════════════════════════════════ */
   function renderChart(statsData) {
     const wrap = document.getElementById('al-chart-wrap');
@@ -847,7 +844,6 @@
 
     const maxViews = Math.max(...data.map(d => d.views));
 
-    // Hauteur réelle : si max = 0 toutes les barres à 0, si max > 0 proportionnel
     data.forEach(d => {
       const pct = maxViews > 0 ? Math.max((d.views / maxViews) * 80, d.views > 0 ? 6 : 2) : 2;
       const col = document.createElement('div');
@@ -862,7 +858,6 @@
       setTimeout(() => { col.querySelector('.al-chart-bar').style.height = pct + '%'; }, 100);
     });
 
-    // Si un seul article — ajouter bâton fantôme cliquable
     if (data.length === 1) {
       const ghost = document.createElement('div');
       ghost.className = 'al-chart-col';
@@ -881,7 +876,7 @@
   }
 
   /* ══════════════════════════════════════
-     NOTIFICATIONS — avis + ressources 24h
+     NOTIFICATIONS
   ══════════════════════════════════════ */
   function renderNotifications(statsData) {
     const notifEl  = document.getElementById('al-notif-list');
@@ -894,8 +889,6 @@
 
     (statsData || []).forEach(a => {
       const title = a.article?.title || 'votre article';
-
-      // Avis des 24h
       (a.avis || []).forEach(av => {
         if ((now - av.created_at) <= h24) {
           items.push({
@@ -905,8 +898,6 @@
           });
         }
       });
-
-      // Téléchargements ressource des 24h
       (a.ressource || []).forEach(r => {
         if ((now - r.created_at) <= h24) {
           const resTitle = r._blog_ressources?.title_short || 'Votre ressource';
@@ -919,7 +910,6 @@
       });
     });
 
-    // Trier par date décroissante
     items.sort((a, b) => (b.ts || 0) - (a.ts || 0));
 
     if (badgeEl) {
@@ -971,20 +961,18 @@
     document.getElementById('al-edit-title').value             = article.title || '';
     document.getElementById('al-edit-short-description').value = article.short_description || '';
 
-    const corp = document.getElementById('al-edit-corp');
+    const corp  = document.getElementById('al-edit-corp');
     const corpH = document.getElementById('al-edit-corp-hidden');
-    if (corp)  corp.innerHTML  = article.corp_text || '';
-    if (corpH) corpH.value     = article.corp_text || '';
+    if (corp)  corp.innerHTML = article.corp_text || '';
+    if (corpH) corpH.value   = article.corp_text || '';
 
-    // Image
-    const ip = document.getElementById('al-edit-img-preview');
+    const ip  = document.getElementById('al-edit-img-preview');
     const iph = document.getElementById('al-edit-img-placeholder');
     const ih  = document.getElementById('al-edit-url-img');
     if (article.url_image) { ip.src=article.url_image; ip.style.display='block'; iph.style.display='none'; }
     else                   { ip.style.display='none'; iph.style.display='flex'; }
     if (ih) ih.value = article.url_image || '';
 
-    // Catégorie
     const catSel = document.getElementById('al-edit-category-select');
     const catH   = document.getElementById('al-edit-category-id');
     if (catSel) {
@@ -999,14 +987,12 @@
       catSel.onchange = () => { if (catH) catH.value = catSel.value; };
     }
 
-    // Durée
     editDuration = article.temps_lecture_secondes || 60;
     const dn = document.getElementById('al-edit-duration-num');
     const dh = document.getElementById('al-edit-duration-seconds');
     if (dn) dn.textContent = editDuration;
     if (dh) dh.value       = editDuration;
 
-    // Toggle cours
     const tc = document.getElementById('al-edit-toggle-course');
     const cb = document.getElementById('al-edit-course-body');
     const cs = document.getElementById('al-edit-course-select');
@@ -1024,7 +1010,6 @@
       cs.onchange = () => { if (ch) ch.value = cs.value; };
     }
 
-    // Toggle ressource — select only
     const tr = document.getElementById('al-edit-toggle-res');
     const rb = document.getElementById('al-edit-res-body');
     const rs = document.getElementById('al-edit-res-select');
@@ -1052,20 +1037,6 @@
     else                { body.style.display='none';  body.classList.remove('af-body-open'); }
   }
 
-  // Modif 3 — gérer classe body pour navbar
-  function openPopup(id) {
-    const el = document.getElementById(id);
-    if (el) { el.style.display = 'flex'; document.body.classList.add('popup-open'); }
-  }
-  function closePopup(id) {
-    const el = document.getElementById(id);
-    if (el) { el.style.display = 'none'; }
-    // Retirer la classe si plus aucun popup ouvert
-    const anyOpen = ['al-pending-popup','al-edit-popup','al-edit-res-popup','al-new-res-standalone-popup']
-      .some(pid => { const p = document.getElementById(pid); return p && p.style.display !== 'none'; });
-    if (!anyOpen) document.body.classList.remove('popup-open');
-  }
-
   document.getElementById('al-pending-popup-close')?.addEventListener('click', () => {
     document.getElementById('al-pending-popup').style.display = 'none';
   });
@@ -1085,7 +1056,6 @@
     syncBody(this, document.getElementById('al-edit-res-body'));
   });
 
-  // Durée edit
   let editDuration = 60;
   document.getElementById('al-edit-duration-up')?.addEventListener('click', () => {
     editDuration += 20;
@@ -1099,7 +1069,6 @@
     }
   });
 
-  // Richtext edit
   const editCorp  = document.getElementById('al-edit-corp');
   const editCorpH = document.getElementById('al-edit-corp-hidden');
   document.querySelectorAll('.af-rt-btn[data-editor="al-edit-corp"]').forEach(btn => {
@@ -1107,7 +1076,6 @@
   });
   editCorp?.addEventListener('input', () => { if(editCorpH) editCorpH.value = editCorp.innerHTML; });
 
-  // Lien edit
   let editSavedRange = null;
   document.getElementById('al-edit-rt-link-btn')?.addEventListener('click', () => {
     const s=window.getSelection(); if(s&&s.rangeCount) editSavedRange=s.getRangeAt(0).cloneRange();
@@ -1129,7 +1097,6 @@
     document.getElementById('al-edit-link-popup').style.display='none';
   });
 
-  // Upload image article edit
   const editImgZone = document.getElementById('al-edit-img-zone');
   const editImgFile = document.getElementById('al-edit-img-file');
   editImgZone?.addEventListener('click', () => editImgFile?.click());
@@ -1142,7 +1109,6 @@
     );
   });
 
-  // Soumettre modification article
   document.getElementById('al-edit-submit-btn')?.addEventListener('click', async () => {
     const article_id       = parseInt(document.getElementById('al-edit-article-id')?.value||'0');
     const title            = document.getElementById('al-edit-title')?.value?.trim();
@@ -1193,15 +1159,15 @@
     const popup = document.getElementById('al-edit-res-popup');
     if (!popup) return;
     document.getElementById('al-edit-res-popup-title').textContent = res.title || res.short_title || '—';
-    document.getElementById('al-res-edit-id').value           = res.id;
-    document.getElementById('al-res-edit-title').value        = res.title || '';
-    document.getElementById('al-res-edit-short-title').value  = res.short_title || res.title_short || '';
-    document.getElementById('al-res-edit-description').value  = res.description || res.description_short || '';
-    document.getElementById('al-res-edit-link').value         = res.lien_ressource || res.ressource_link || '';
-    document.getElementById('al-res-edit-url-img').value      = res.url_image || '';
+    document.getElementById('al-res-edit-id').value          = res.id;
+    document.getElementById('al-res-edit-title').value       = res.title || '';
+    document.getElementById('al-res-edit-short-title').value = res.short_title || res.title_short || '';
+    document.getElementById('al-res-edit-description').value = res.description || res.description_short || '';
+    document.getElementById('al-res-edit-link').value        = res.lien_ressource || res.ressource_link || '';
+    document.getElementById('al-res-edit-url-img').value     = res.url_image || '';
 
-    const rp = document.getElementById('al-res-edit-img-preview');
-    const rph= document.getElementById('al-res-edit-img-placeholder');
+    const rp  = document.getElementById('al-res-edit-img-preview');
+    const rph = document.getElementById('al-res-edit-img-placeholder');
     if (res.url_image) { rp.src=res.url_image; rp.style.display='block'; rph.style.display='none'; }
     else               { rp.style.display='none'; rph.style.display='flex'; }
 
@@ -1214,8 +1180,6 @@
   document.getElementById('al-edit-res-popup')?.addEventListener('click', e => {
     if (e.target.id === 'al-edit-res-popup') document.getElementById('al-edit-res-popup').style.display = 'none';
   });
-
-  // Image ressource supprimée (modif 7)
 
   document.getElementById('al-res-edit-submit-btn')?.addEventListener('click', async () => {
     const id          = parseInt(document.getElementById('al-res-edit-id')?.value||'0');
@@ -1265,20 +1229,16 @@
       document.getElementById('al-new-res-standalone-popup').style.display = 'none';
   });
 
-  // Image nouvelle ressource supprimée (modif 7)
-
   document.getElementById('al-new-res-submit-btn')?.addEventListener('click', async () => {
     const title       = document.getElementById('al-new-res-title')?.value?.trim();
     const short_title = document.getElementById('al-new-res-short-title')?.value?.trim();
     const description = document.getElementById('al-new-res-description')?.value?.trim();
     const link        = document.getElementById('al-new-res-link')?.value?.trim();
-    const url_img     = document.getElementById('al-new-res-url-img')?.value?.trim();
 
+    // ← CORRECTION : blocage sur url_img supprimé (champ image retiré du HTML)
     if (!title)       { alert('Le titre est obligatoire.'); return; }
     if (!short_title) { alert('Le titre court est obligatoire.'); return; }
-    if (!description) { alert('La description est obligatoire.'); return; }
     if (!link)        { alert('Le lien de la ressource est obligatoire.'); return; }
-    if (!url_img)     { alert('Image obligatoire.'); return; }
 
     const btn = document.getElementById('al-new-res-submit-btn');
     btn.disabled=true; btn.textContent='⏳ Publication…';
@@ -1293,13 +1253,9 @@
       const r2 = await fetch(REFRESH_URL, {headers:{'Authorization':'Bearer '+getToken()}});
       if (r2.ok) { const d=await r2.json(); localStorage.setItem('auth',JSON.stringify(Object.assign({},getAuth(),d))); }
 
-      // Reset form
-      ['al-new-res-title','al-new-res-short-title','al-new-res-description','al-new-res-link','al-new-res-url-img'].forEach(id=>{
+      ['al-new-res-title','al-new-res-short-title','al-new-res-description','al-new-res-link'].forEach(id=>{
         const el=document.getElementById(id); if(el) el.value='';
       });
-      const rp=document.getElementById('al-new-res-img-preview'), rph=document.getElementById('al-new-res-img-placeholder');
-      if(rp){rp.src='';rp.style.display='none';} if(rph) rph.style.display='flex';
-      document.getElementById('al-new-res-img-status').textContent='';
 
       btn.textContent='✅ Ressource publiée !';
       setTimeout(() => {
@@ -1345,6 +1301,9 @@
       formSection.scrollIntoView({ behavior:'smooth', block:'start' });
     }
   });
+
+  // Bouton abandon dans dr-article-form.js — rappel : doit aussi utiliser 'block' pas 'flex'
+  // La correction est dans dr-article-form.js à la ligne : listSection.style.display = 'block'
 
   /* ── Echap ── */
   document.addEventListener('keydown', e => {
