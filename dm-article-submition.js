@@ -720,6 +720,7 @@
           </div>
         </div>
         <div class="al-article-actions">
+          ${status === 'published' && article.slug ? `<a class="al-btn-view" href="https://www.digitools-room.com/articles-de-blog/${article.slug}" target="_blank">👁️ Voir →</a>` : ''}
           <button class="al-btn-edit" data-article-id="${article.id}" data-status="${status}">✏️ Modifier →</button>
         </div>`;
 
@@ -767,9 +768,8 @@
     if (!wrap) return;
     wrap.innerHTML = '';
 
-    // Construire un tableau par article avec les vues des 24 dernières heures
-    const now      = Date.now();
-    const h24      = 24 * 3600 * 1000;
+    const now  = Date.now();
+    const h24  = 24 * 3600 * 1000;
     const articles = statsData || [];
 
     if (articles.length === 0) {
@@ -777,28 +777,25 @@
       return;
     }
 
-    // Compter les vues des 24h par article
-    const data = articles.map(a => {
-      const views24h = (a.view || []).filter(v => (now - v.created_at) <= h24).length;
-      return { title: a.article?.title || '—', views: views24h };
-    });
+    const data = articles.map(a => ({
+      title:  a.article?.title || '—',
+      views:  (a.view || []).filter(v => (now - v.created_at) <= h24).length,
+    }));
 
     const max = Math.max(...data.map(d => d.views), 1);
 
     data.forEach(d => {
+      const pct = Math.max((d.views / max) * 100, 4);
       const col = document.createElement('div');
       col.className = 'al-chart-col';
-      const bar = document.createElement('div');
-      bar.className = 'al-chart-bar';
-      bar.style.height = '0%';
-      bar.dataset.count = d.views + ' vue' + (d.views !== 1 ? 's' : '') + ' (24h)';
-      setTimeout(() => { bar.style.height = Math.max((d.views / max) * 85, 3) + '%'; }, 100);
-      const lbl = document.createElement('div');
-      lbl.className = 'al-chart-label';
-      lbl.textContent = d.title.split(' ').slice(0,3).join(' ') + (d.title.split(' ').length > 3 ? '…' : '');
-      lbl.title = d.title;
-      col.appendChild(bar); col.appendChild(lbl);
+      col.innerHTML = `
+        <div class="al-chart-val">${d.views}</div>
+        <div class="al-chart-bar-wrap">
+          <div class="al-chart-bar" style="height:0%" data-pct="${pct}"></div>
+        </div>
+        <div class="al-chart-label" title="${d.title}">${d.title.split(' ').slice(0,3).join(' ')}${d.title.split(' ').length > 3 ? '…' : ''}</div>`;
       wrap.appendChild(col);
+      setTimeout(() => { col.querySelector('.al-chart-bar').style.height = pct + '%'; }, 100);
     });
   }
 
