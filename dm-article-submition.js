@@ -285,7 +285,6 @@
   const courseIdInput  = document.getElementById('af-course-id');
 
   function syncCourseBody() {
-    if (!courseBody) return;
     if (toggleCourse.checked) { courseBody.style.display = 'flex'; courseBody.classList.add('af-body-open'); }
     else                      { courseBody.style.display = 'none';  courseBody.classList.remove('af-body-open'); }
   }
@@ -315,7 +314,6 @@
   const resIdInput  = document.getElementById('af-ressource-id');
 
   function syncResBody() {
-    if (!resBody) return;
     if (toggleRes.checked) { resBody.style.display = 'flex'; resBody.classList.add('af-body-open'); }
     else                   { resBody.style.display = 'none';  resBody.classList.remove('af-body-open'); }
   }
@@ -616,8 +614,6 @@
   }
 
 })();
-
-
 
 
 
@@ -1052,7 +1048,6 @@
   }
 
   function syncBody(toggle, body) {
-    if (!body) return;
     if (!body) return;
     if (toggle.checked) { body.style.display='flex'; body.classList.add('af-body-open'); }
     else                { body.style.display='none';  body.classList.remove('af-body-open'); }
