@@ -712,14 +712,14 @@
           <p class="al-article-title">${article.title || '—'}</p>
           <div class="al-article-meta">
             <span class="al-badge ${statusCfg.cls}">${statusCfg.label}</span>
+            <span class="al-article-stat">⭐ ${article.average_notation > 0 ? Number(article.average_notation).toFixed(1) : '—'}</span>
             <span class="al-article-stat">⏱️ ${formatDuration(article.temps_lecture_secondes)}</span>
             <span class="al-article-stat">👁️ ${fmt(article.nb_view)} vues</span>
             <span class="al-article-stat">💬 ${fmt(article.nb_notation)} avis</span>
-            <span class="al-article-stat">⭐ ${article.average_notation > 0 ? Number(article.average_notation).toFixed(1) : '—'}</span>
           </div>
         </div>
         <div class="al-article-actions">
-          <button class="al-btn-edit" data-article-id="${article.id}" data-status="${status}">✏️ Modifier</button>
+          <button class="al-btn-edit" data-article-id="${article.id}" data-status="${status}">✏️ Modifier →</button>
         </div>`;
 
       item.querySelector('.al-btn-edit').addEventListener('click', () => handleEditArticle(article, status));
@@ -753,6 +753,7 @@
           <button class="al-btn-edit">✏️ Modifier</button>
         </div>`;
       item.querySelector('.al-btn-edit').addEventListener('click', () => openEditResPopup(res));
+      item.querySelector('.al-btn-edit').textContent = '✏️ Modifier →';
       resListEl.appendChild(item);
     });
   }
@@ -1202,7 +1203,11 @@
     const link        = document.getElementById('al-new-res-link')?.value?.trim();
     const url_img     = document.getElementById('al-new-res-url-img')?.value?.trim();
 
-    if (!title||!short_title||!link) { alert('Titre, titre court et lien sont obligatoires.'); return; }
+    if (!title)       { alert('Le titre est obligatoire.'); return; }
+    if (!short_title) { alert('Le titre court est obligatoire.'); return; }
+    if (!description) { alert('La description est obligatoire.'); return; }
+    if (!link)        { alert('Le lien de la ressource est obligatoire.'); return; }
+    if (!url_img)     { alert('L'image est obligatoire.'); return; }
 
     const btn = document.getElementById('al-new-res-submit-btn');
     btn.disabled=true; btn.textContent='⏳ Publication…';
