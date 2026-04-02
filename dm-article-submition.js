@@ -598,7 +598,6 @@
 
 
 
-
 /* ============================================================
    dr-article-list.js
    ============================================================ */
@@ -1209,7 +1208,7 @@
     if (!short_title) { alert('Le titre court est obligatoire.'); return; }
     if (!description) { alert('La description est obligatoire.'); return; }
     if (!link)        { alert('Le lien de la ressource est obligatoire.'); return; }
-    if (!url_img)     { alert('L'image est obligatoire.'); return; }
+    if (!url_img)     { alert('Image obligatoire.'); return; }
 
     const btn = document.getElementById('al-new-res-submit-btn');
     btn.disabled=true; btn.textContent='⏳ Publication…';
