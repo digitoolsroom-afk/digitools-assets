@@ -778,25 +778,43 @@
     }
 
     const data = articles.map(a => ({
-      title:  a.article?.title || '—',
-      views:  (a.view || []).filter(v => (now - v.created_at) <= h24).length,
+      title: a.article?.title || '—',
+      views: (a.view || []).filter(v => (now - v.created_at) <= h24).length,
     }));
 
-    const max = Math.max(...data.map(d => d.views), 1);
+    const maxViews = Math.max(...data.map(d => d.views));
 
+    // Hauteur réelle : si max = 0 toutes les barres à 0, si max > 0 proportionnel
     data.forEach(d => {
-      const pct = Math.max((d.views / max) * 100, 4);
+      const pct = maxViews > 0 ? Math.max((d.views / maxViews) * 80, d.views > 0 ? 6 : 2) : 2;
       const col = document.createElement('div');
       col.className = 'al-chart-col';
       col.innerHTML = `
-        <div class="al-chart-val">${d.views}</div>
+        <div class="al-chart-val">${d.views > 0 ? d.views : ''}</div>
         <div class="al-chart-bar-wrap">
-          <div class="al-chart-bar" style="height:0%" data-pct="${pct}"></div>
+          <div class="al-chart-bar" style="height:0%"></div>
         </div>
         <div class="al-chart-label" title="${d.title}">${d.title.split(' ').slice(0,3).join(' ')}${d.title.split(' ').length > 3 ? '…' : ''}</div>`;
       wrap.appendChild(col);
       setTimeout(() => { col.querySelector('.al-chart-bar').style.height = pct + '%'; }, 100);
     });
+
+    // Si un seul article — ajouter bâton fantôme cliquable
+    if (data.length === 1) {
+      const ghost = document.createElement('div');
+      ghost.className = 'al-chart-col';
+      ghost.innerHTML = `
+        <div class="al-chart-val"></div>
+        <div class="al-chart-bar-wrap">
+          <div class="al-chart-bar-ghost" title="Publiez un nouvel article pour augmenter vos vues"></div>
+        </div>
+        <div class="al-chart-label">+ Nouvel article</div>`;
+      ghost.querySelector('.al-chart-bar-ghost').addEventListener('click', () => {
+        const btn = document.getElementById('al-btn-new-article');
+        if (btn) btn.click();
+      });
+      wrap.appendChild(ghost);
+    }
   }
 
   /* ══════════════════════════════════════
