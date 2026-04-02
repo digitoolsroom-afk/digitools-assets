@@ -602,373 +602,445 @@
    ============================================================ */
 (function () {
 
-  /* ── Endpoints ── */
-  const MODIFY_URL  = 'https://xmot-l3ir-7kuj.p7.xano.io/api:5QivUixX/modify_article';
-  const ADD_RES_URL = 'https://xmot-l3ir-7kuj.p7.xano.io/api:5QivUixX/add_ressources_blog';
-  const UPLOAD_URL  = 'https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/upload-proof';
-  const REFRESH_URL = 'https://xmot-l3ir-7kuj.p7.xano.io/api:uFugjjm6/user_full_data';
-  const NOTIF_URL   = null; // À compléter quand l'endpoint sera créé
-
-  const XANO_BASE = 'https://xmot-l3ir-7kuj.p7.xano.io';
+  const STATS_URL      = 'https://xmot-l3ir-7kuj.p7.xano.io/api:5QivUixX/get_stats_article_freelance';
+  const MODIFY_URL     = 'https://xmot-l3ir-7kuj.p7.xano.io/api:5QivUixX/modify_article';
+  const MODIFY_RES_URL = 'https://xmot-l3ir-7kuj.p7.xano.io/api:5QivUixX/modify_ressource';
+  const ADD_RES_URL    = 'https://xmot-l3ir-7kuj.p7.xano.io/api:5QivUixX/add_ressources_blog';
+  const UPLOAD_URL     = 'https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/upload-proof';
+  const REFRESH_URL    = 'https://xmot-l3ir-7kuj.p7.xano.io/api:uFugjjm6/user_full_data';
+  const XANO_BASE      = 'https://xmot-l3ir-7kuj.p7.xano.io';
 
   const CATEGORIES = [
-    {id:1,  name:'Développement & Tech',      emoji:'💻'},
-    {id:2,  name:'Design & Créativité',        emoji:'🎨'},
-    {id:3,  name:'Marketing & Croissance',     emoji:'📈'},
-    {id:4,  name:'Réseaux sociaux & Contenu',  emoji:'📱'},
-    {id:5,  name:'Business & Entrepreneuriat', emoji:'💼'},
-    {id:6,  name:'Data & IA',                  emoji:'🤖'},
-    {id:7,  name:'E-commerce & Vente',         emoji:'🛒'},
-    {id:8,  name:'Outils & Productivité',      emoji:'⚙️'},
-    {id:9,  name:'Juridique & Finance',        emoji:'⚖️'},
-    {id:10, name:'Formation & Pédagogie',      emoji:'🎓'},
+    {id:1,name:'Développement & Tech',emoji:'💻'},{id:2,name:'Design & Créativité',emoji:'🎨'},
+    {id:3,name:'Marketing & Croissance',emoji:'📈'},{id:4,name:'Réseaux sociaux & Contenu',emoji:'📱'},
+    {id:5,name:'Business & Entrepreneuriat',emoji:'💼'},{id:6,name:'Data & IA',emoji:'🤖'},
+    {id:7,name:'E-commerce & Vente',emoji:'🛒'},{id:8,name:'Outils & Productivité',emoji:'⚙️'},
+    {id:9,name:'Juridique & Finance',emoji:'⚖️'},{id:10,name:'Formation & Pédagogie',emoji:'🎓'},
   ];
 
   const STATUS_LABELS = {
-    pending:   { label:'En attente',  cls:'pending'   },
-    published: { label:'Publié ✓',   cls:'published' },
-    refused:   { label:'Refusé',      cls:'refused'   },
+    pending:   {label:'En attente', cls:'pending'},
+    published: {label:'Publié ✓',  cls:'published'},
+    refused:   {label:'Refusé',     cls:'refused'},
   };
 
-  /* ── Auth ── */
   function getAuth()       { return JSON.parse(localStorage.getItem('auth') || 'null'); }
   function getToken()      { return getAuth()?.token || ''; }
   function getFreelanceId(){ return getAuth()?.freelance?.profile?.id || getAuth()?.freelance?.id || 0; }
+  function fmt(n)          { return (n || 0).toLocaleString('fr-FR'); }
+  function formatDuration(sec) {
+    if (!sec) return '—';
+    const m = Math.floor(sec / 60), s = sec % 60;
+    return m > 0 ? `${m}min${s > 0 ? ' '+s+'s':''}` : `${s}s`;
+  }
+  function formatRelativeTime(ts) {
+    if (!ts) return '';
+    const diff = Date.now() - ts, m = Math.floor(diff/60000);
+    if (m < 1) return 'À l\'instant';
+    if (m < 60) return `Il y a ${m}min`;
+    const h = Math.floor(m/60);
+    if (h < 24) return `Il y a ${h}h`;
+    return `Il y a ${Math.floor(h/24)}j`;
+  }
 
-  /* ── Éléments ── */
-  const section    = document.getElementById('section-article-list');
-  const listEl     = document.getElementById('al-articles-list');
-  const mktSection = document.getElementById('section-article-marketing');
-  const mktTopline = document.getElementById('art-mkt-topline');
-  const formSection= document.getElementById('section-article-form');
-
+  const section     = document.getElementById('section-article-list');
+  const listEl      = document.getElementById('al-articles-list');
+  const resListEl   = document.getElementById('al-ressources-list');
+  const mktSection  = document.getElementById('section-article-marketing');
+  const mktTopline  = document.getElementById('art-mkt-topline');
+  const formSection = document.getElementById('section-article-form');
   if (!section) return;
 
-  /* ── Init ── */
-  function init() {
+  /* ══════════════════════════════════════
+     INIT
+  ══════════════════════════════════════ */
+  async function init() {
     const auth     = getAuth();
     const articles = auth?.freelance?.article || [];
+    if (articles.length === 0) { section.style.display = 'none'; return; }
 
-    if (articles.length === 0) {
-      section.style.display = 'none';
-      return;
-    }
-
-    // Masquer la section marketing si articles présents
     if (mktSection) mktSection.style.display = 'none';
     if (mktTopline) mktTopline.style.display  = 'none';
     section.style.display = 'flex';
 
     renderArticles(articles);
-    renderChart(articles);
-    loadNotifications();
+    renderRessources(auth?.freelance?.ressources || []);
+
+    // Appel endpoint stats avec les IDs des articles
+    const articleIds = articles.map(a => a.id).filter(Boolean);
+    if (articleIds.length > 0) {
+      try {
+        const res = await fetch(STATS_URL, {
+          method:  'POST',
+          headers: {'Content-Type':'application/json','Authorization':'Bearer '+getToken()},
+          body:    JSON.stringify({ article_id: articleIds }),
+        });
+        if (res.ok) {
+          const stats = await res.json();
+          renderChart(stats);
+          renderNotifications(stats);
+        }
+      } catch(e) {
+        console.error('[Stats]', e);
+        renderChart([]);
+        renderNotifications([]);
+      }
+    }
   }
 
-  // Ré-initialiser après publication d'un nouvel article
-  document.addEventListener('article-published', () => {
-    setTimeout(init, 500);
-  });
+  document.addEventListener('article-published', () => setTimeout(init, 500));
 
   /* ══════════════════════════════════════
-     RENDER ARTICLES
+     ARTICLES
   ══════════════════════════════════════ */
   function renderArticles(articles) {
     if (!listEl) return;
     listEl.innerHTML = '';
-
     articles.forEach(article => {
       const status    = article.status || 'pending';
       const statusCfg = STATUS_LABELS[status] || STATUS_LABELS.pending;
+      const item      = document.createElement('div');
+      item.className  = 'al-article-item';
 
-      const item = document.createElement('div');
-      item.className = 'al-article-item';
+      const imgHtml = article.url_image
+        ? `<img class="al-article-img" src="${article.url_image}" alt="" />`
+        : `<div class="al-article-img-placeholder">📄</div>`;
 
-      // Image
-      const imgWrap = document.createElement('div');
-      if (article.url_image) {
-        const img = document.createElement('img');
-        img.src = article.url_image; img.alt = ''; img.className = 'al-article-img';
-        imgWrap.appendChild(img);
-      } else {
-        imgWrap.className = 'al-article-img-placeholder'; imgWrap.textContent = '📄';
-      }
+      item.innerHTML = `
+        ${imgHtml}
+        <div class="al-article-info">
+          <p class="al-article-title">${article.title || '—'}</p>
+          <div class="al-article-meta">
+            <span class="al-badge ${statusCfg.cls}">${statusCfg.label}</span>
+            <span class="al-article-stat">⏱️ ${formatDuration(article.temps_lecture_secondes)}</span>
+            <span class="al-article-stat">👁️ ${fmt(article.nb_view)} vues</span>
+            <span class="al-article-stat">💬 ${fmt(article.nb_notation)} avis</span>
+            <span class="al-article-stat">⭐ ${article.average_notation > 0 ? Number(article.average_notation).toFixed(1) : '—'}</span>
+          </div>
+        </div>
+        <div class="al-article-actions">
+          <button class="al-btn-edit" data-article-id="${article.id}" data-status="${status}">✏️ Modifier</button>
+        </div>`;
 
-      // Infos
-      const info = document.createElement('div');
-      info.className = 'al-article-info';
-
-      const title = document.createElement('p');
-      title.className = 'al-article-title'; title.textContent = article.title || '—';
-
-      const meta = document.createElement('div');
-      meta.className = 'al-article-meta';
-
-      // Badge status
-      const badge = document.createElement('span');
-      badge.className = `al-badge ${statusCfg.cls}`;
-      badge.textContent = statusCfg.label;
-
-      // Stats
-      const stats = [
-        { icon:'⏱️', val: formatDuration(article.temps_lecture_secondes) },
-        { icon:'👁️', val: fmt(article.nb_view) + ' vues'              },
-        { icon:'💬', val: fmt(article.nb_notation) + ' avis'           },
-        { icon:'⭐', val: article.average_notation > 0 ? Number(article.average_notation).toFixed(1) : '—' },
-      ];
-      meta.appendChild(badge);
-      stats.forEach(s => {
-        const el = document.createElement('span');
-        el.className = 'al-article-stat';
-        el.textContent = s.icon + ' ' + s.val;
-        meta.appendChild(el);
-      });
-
-      info.appendChild(title);
-      info.appendChild(meta);
-
-      // Bouton modifier
-      const actions = document.createElement('div');
-      actions.className = 'al-article-actions';
-      const editBtn = document.createElement('button');
-      editBtn.className = 'al-btn-edit';
-      editBtn.textContent = '✏️ Modifier';
-      editBtn.addEventListener('click', () => handleEdit(article, status));
-      actions.appendChild(editBtn);
-
-      item.appendChild(imgWrap);
-      item.appendChild(info);
-      item.appendChild(actions);
+      item.querySelector('.al-btn-edit').addEventListener('click', () => handleEditArticle(article, status));
       listEl.appendChild(item);
     });
   }
 
-  /* ── Gestion du clic Modifier ── */
-  function handleEdit(article, status) {
-    if (status === 'pending') {
-      // Popup "en attente"
-      document.getElementById('al-pending-popup').style.display = 'flex';
+  /* ══════════════════════════════════════
+     RESSOURCES
+  ══════════════════════════════════════ */
+  function renderRessources(ressources) {
+    if (!resListEl) return;
+    resListEl.innerHTML = '';
+    if (ressources.length === 0) {
+      resListEl.innerHTML = `<div class="al-notif-empty"><span class="al-notif-empty-icon">📎</span>Aucune ressource publiée.</div>`;
       return;
     }
-    // Ouvrir le formulaire d'édition pré-rempli
-    openEditPopup(article);
+    ressources.forEach(res => {
+      const item = document.createElement('div');
+      item.className = 'al-res-item';
+      const imgHtml = res.url_image
+        ? `<img class="al-res-img" src="${res.url_image}" alt="" />`
+        : `<div class="al-res-img-placeholder">📎</div>`;
+      item.innerHTML = `
+        ${imgHtml}
+        <div class="al-res-info">
+          <p class="al-res-title">${res.title || res.short_title || '—'}</p>
+          <p class="al-res-meta">${res.short_title || ''}</p>
+        </div>
+        <div class="al-article-actions">
+          <button class="al-btn-edit">✏️ Modifier</button>
+        </div>`;
+      item.querySelector('.al-btn-edit').addEventListener('click', () => openEditResPopup(res));
+      resListEl.appendChild(item);
+    });
   }
 
   /* ══════════════════════════════════════
-     POPUP PENDING
+     GRAPHIQUE — vues par heure (24h)
   ══════════════════════════════════════ */
-  document.getElementById('al-pending-popup-close')?.addEventListener('click', () => {
-    document.getElementById('al-pending-popup').style.display = 'none';
-  });
-  document.getElementById('al-pending-popup')?.addEventListener('click', e => {
-    if (e.target === document.getElementById('al-pending-popup'))
-      document.getElementById('al-pending-popup').style.display = 'none';
-  });
+  function renderChart(statsData) {
+    const wrap = document.getElementById('al-chart-wrap');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+
+    // Construire un tableau par article avec les vues des 24 dernières heures
+    const now      = Date.now();
+    const h24      = 24 * 3600 * 1000;
+    const articles = statsData || [];
+
+    if (articles.length === 0) {
+      wrap.innerHTML = '<div class="al-chart-empty">Aucune donnée à afficher.</div>';
+      return;
+    }
+
+    // Compter les vues des 24h par article
+    const data = articles.map(a => {
+      const views24h = (a.view || []).filter(v => (now - v.created_at) <= h24).length;
+      return { title: a.article?.title || '—', views: views24h };
+    });
+
+    const max = Math.max(...data.map(d => d.views), 1);
+
+    data.forEach(d => {
+      const col = document.createElement('div');
+      col.className = 'al-chart-col';
+      const bar = document.createElement('div');
+      bar.className = 'al-chart-bar';
+      bar.style.height = '0%';
+      bar.dataset.count = d.views + ' vue' + (d.views !== 1 ? 's' : '') + ' (24h)';
+      setTimeout(() => { bar.style.height = Math.max((d.views / max) * 85, 3) + '%'; }, 100);
+      const lbl = document.createElement('div');
+      lbl.className = 'al-chart-label';
+      lbl.textContent = d.title.split(' ').slice(0,3).join(' ') + (d.title.split(' ').length > 3 ? '…' : '');
+      lbl.title = d.title;
+      col.appendChild(bar); col.appendChild(lbl);
+      wrap.appendChild(col);
+    });
+  }
 
   /* ══════════════════════════════════════
-     POPUP EDIT — PRÉ-REMPLISSAGE
+     NOTIFICATIONS — avis + ressources 24h
   ══════════════════════════════════════ */
-  function openEditPopup(article) {
+  function renderNotifications(statsData) {
+    const notifEl  = document.getElementById('al-notif-list');
+    const badgeEl  = document.getElementById('al-notif-badge');
+    if (!notifEl) return;
+
+    const now  = Date.now();
+    const h24  = 24 * 3600 * 1000;
+    const items = [];
+
+    (statsData || []).forEach(a => {
+      const title = a.article?.title || 'votre article';
+
+      // Avis des 24h
+      (a.avis || []).forEach(av => {
+        if ((now - av.created_at) <= h24) {
+          items.push({
+            icon: '⭐',
+            text: `Nouvelle note <strong>${av.note}/5</strong> sur "<strong>${title}</strong>" — "${av.avis}"`,
+            ts:   av.created_at,
+          });
+        }
+      });
+
+      // Téléchargements ressource des 24h
+      (a.ressource || []).forEach(r => {
+        if ((now - r.created_at) <= h24) {
+          const resTitle = r._blog_ressources?.title_short || 'Votre ressource';
+          items.push({
+            icon: '📥',
+            text: `"<strong>${resTitle}</strong>" a été téléchargée (article : <strong>${title}</strong>)`,
+            ts:   r.created_at,
+          });
+        }
+      });
+    });
+
+    // Trier par date décroissante
+    items.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+
+    if (badgeEl) {
+      badgeEl.textContent   = items.length;
+      badgeEl.style.display = items.length > 0 ? 'inline-flex' : 'none';
+    }
+
+    if (items.length === 0) {
+      notifEl.innerHTML = `<div class="al-notif-empty"><span class="al-notif-empty-icon">🔕</span>Aucune nouvelle notification dans les 24 dernières heures.</div>`;
+      return;
+    }
+
+    notifEl.innerHTML = '';
+    items.forEach(n => {
+      const el = document.createElement('div');
+      el.className = 'al-notif-item new';
+      el.innerHTML = `
+        <span class="al-notif-icon">${n.icon}</span>
+        <span class="al-notif-text">${n.text}</span>
+        <span class="al-notif-time">${formatRelativeTime(n.ts)}</span>`;
+      notifEl.appendChild(el);
+    });
+  }
+
+  /* ══════════════════════════════════════
+     EDIT ARTICLE
+  ══════════════════════════════════════ */
+  function handleEditArticle(article, status) {
+    if (status === 'pending') {
+      document.getElementById('al-pending-popup').style.display = 'flex';
+      return;
+    }
+    openEditArticlePopup(article);
+  }
+
+  function openEditArticlePopup(article) {
     const popup = document.getElementById('al-edit-popup');
     if (!popup) return;
 
-    // Titre popup
     document.getElementById('al-edit-popup-title').textContent = article.title || '—';
+    document.getElementById('al-edit-article-id').value        = article.id;
 
-    // Article ID
-    document.getElementById('al-edit-article-id').value = article.id;
-
-    // Note de refus
-    const refusedNote = document.getElementById('al-refused-note');
-    const refusedText = document.getElementById('al-refused-note-text');
+    const refNote = document.getElementById('al-refused-note');
+    const refText = document.getElementById('al-refused-note-text');
     if (article.status === 'refused' && article.note_refused) {
-      refusedNote.style.display = 'flex';
-      refusedText.textContent   = article.note_refused;
-    } else {
-      refusedNote.style.display = 'none';
-    }
+      refNote.style.display = 'flex'; refText.textContent = article.note_refused;
+    } else { refNote.style.display = 'none'; }
 
-    // Champs texte
-    const titleEl = document.getElementById('al-edit-title');
-    const descEl  = document.getElementById('al-edit-short-description');
-    if (titleEl) titleEl.value = article.title || '';
-    if (descEl)  descEl.value  = article.short_description || '';
+    document.getElementById('al-edit-title').value             = article.title || '';
+    document.getElementById('al-edit-short-description').value = article.short_description || '';
 
-    // Corps richtext
-    const corpEl     = document.getElementById('al-edit-corp');
-    const corpHidden = document.getElementById('al-edit-corp-hidden');
-    if (corpEl)     corpEl.innerHTML   = article.corp_text || '';
-    if (corpHidden) corpHidden.value   = article.corp_text || '';
+    const corp = document.getElementById('al-edit-corp');
+    const corpH = document.getElementById('al-edit-corp-hidden');
+    if (corp)  corp.innerHTML  = article.corp_text || '';
+    if (corpH) corpH.value     = article.corp_text || '';
 
     // Image
-    const imgPreview     = document.getElementById('al-edit-img-preview');
-    const imgPlaceholder = document.getElementById('al-edit-img-placeholder');
-    const imgHidden      = document.getElementById('al-edit-url-img');
-    if (article.url_image) {
-      imgPreview.src = article.url_image; imgPreview.style.display = 'block';
-      imgPlaceholder.style.display = 'none';
-    } else {
-      imgPreview.style.display = 'none'; imgPlaceholder.style.display = 'flex';
-    }
-    if (imgHidden) imgHidden.value = article.url_image || '';
+    const ip = document.getElementById('al-edit-img-preview');
+    const iph = document.getElementById('al-edit-img-placeholder');
+    const ih  = document.getElementById('al-edit-url-img');
+    if (article.url_image) { ip.src=article.url_image; ip.style.display='block'; iph.style.display='none'; }
+    else                   { ip.style.display='none'; iph.style.display='flex'; }
+    if (ih) ih.value = article.url_image || '';
 
     // Catégorie
-    const catSelect = document.getElementById('al-edit-category-select');
-    const catHidden = document.getElementById('al-edit-category-id');
-    if (catSelect) {
-      catSelect.innerHTML = '<option value="">— Choisir une catégorie —</option>';
+    const catSel = document.getElementById('al-edit-category-select');
+    const catH   = document.getElementById('al-edit-category-id');
+    if (catSel) {
+      catSel.innerHTML = '<option value="">— Choisir une catégorie —</option>';
       CATEGORIES.forEach(c => {
         const o = document.createElement('option');
-        o.value = c.id; o.textContent = c.emoji + ' ' + c.name;
+        o.value = c.id; o.textContent = c.emoji+' '+c.name;
         if (c.id === article.blog_category_id) o.selected = true;
-        catSelect.appendChild(o);
+        catSel.appendChild(o);
       });
-      if (catHidden) catHidden.value = article.blog_category_id || '';
-      catSelect.addEventListener('change', () => { catHidden.value = catSelect.value; });
+      if (catH) catH.value = article.blog_category_id || '';
+      catSel.onchange = () => { if (catH) catH.value = catSel.value; };
     }
 
     // Durée
-    let editDuration = article.temps_lecture_secondes || 60;
-    const durNum    = document.getElementById('al-edit-duration-num');
-    const durHidden = document.getElementById('al-edit-duration-seconds');
-    if (durNum)    durNum.textContent = editDuration;
-    if (durHidden) durHidden.value    = editDuration;
+    editDuration = article.temps_lecture_secondes || 60;
+    const dn = document.getElementById('al-edit-duration-num');
+    const dh = document.getElementById('al-edit-duration-seconds');
+    if (dn) dn.textContent = editDuration;
+    if (dh) dh.value       = editDuration;
 
     // Toggle cours
-    const toggleCourse  = document.getElementById('al-edit-toggle-course');
-    const courseBody    = document.getElementById('al-edit-course-body');
-    const courseSelect  = document.getElementById('al-edit-course-select');
-    const courseHidden  = document.getElementById('al-edit-course-id');
-    const courses       = getAuth()?.freelance?.course_published || [];
-
-    if (toggleCourse) {
-      toggleCourse.checked = !!article.is_course_linked;
-      courseBody.style.display = article.is_course_linked ? 'flex' : 'none';
-      if (article.is_course_linked) courseBody.classList.add('af-body-open');
-    }
-    if (courseSelect) {
-      courseSelect.innerHTML = '<option value="">— Choisir un cours —</option>';
-      courses.forEach(c => {
+    const tc = document.getElementById('al-edit-toggle-course');
+    const cb = document.getElementById('al-edit-course-body');
+    const cs = document.getElementById('al-edit-course-select');
+    const ch = document.getElementById('al-edit-course-id');
+    if (tc) { tc.checked = !!article.is_course_linked; syncBody(tc, cb); }
+    if (cs) {
+      cs.innerHTML = '<option value="">— Choisir un cours —</option>';
+      (getAuth()?.freelance?.course_published || []).forEach(c => {
         const o = document.createElement('option');
-        o.value = c.id; o.textContent = c.theme || c.title || 'Cours #' + c.id;
+        o.value = c.id; o.textContent = c.theme || c.title || 'Cours #'+c.id;
         if (c.id === article.courses_id) o.selected = true;
-        courseSelect.appendChild(o);
+        cs.appendChild(o);
       });
-      if (courseHidden) courseHidden.value = article.courses_id || '';
-      courseSelect.addEventListener('change', () => { courseHidden.value = courseSelect.value; });
+      if (ch) ch.value = article.courses_id || '';
+      cs.onchange = () => { if (ch) ch.value = cs.value; };
     }
 
-    // Toggle ressource
-    const toggleRes = document.getElementById('al-edit-toggle-res');
-    const resBody   = document.getElementById('al-edit-res-body');
-    if (toggleRes) {
-      toggleRes.checked = !!article.is_ressource;
-      resBody.style.display = article.is_ressource ? 'flex' : 'none';
-      if (article.is_ressource) resBody.classList.add('af-body-open');
+    // Toggle ressource — select only
+    const tr = document.getElementById('al-edit-toggle-res');
+    const rb = document.getElementById('al-edit-res-body');
+    const rs = document.getElementById('al-edit-res-select');
+    const rh = document.getElementById('al-edit-res-id');
+    if (tr) { tr.checked = !!article.is_ressource; syncBody(tr, rb); }
+    if (rs) {
+      rs.innerHTML = '<option value="">— Sélectionner une ressource —</option>';
+      (getAuth()?.freelance?.ressources || []).forEach(r => {
+        const o = document.createElement('option');
+        o.value = r.id; o.textContent = r.short_title || r.title || 'Ressource #'+r.id;
+        if (r.id === article.blog_ressources_id) o.selected = true;
+        rs.appendChild(o);
+      });
+      if (rh) rh.value = article.blog_ressources_id || '';
+      rs.onchange = () => { if (rh) rh.value = rs.value; };
     }
-    fillEditRessources(article.blog_ressources_id);
 
     popup.style.display = 'flex';
     popup.scrollTop = 0;
   }
 
+  function syncBody(toggle, body) {
+    if (!body) return;
+    if (toggle.checked) { body.style.display='flex'; body.classList.add('af-body-open'); }
+    else                { body.style.display='none';  body.classList.remove('af-body-open'); }
+  }
+
+  document.getElementById('al-pending-popup-close')?.addEventListener('click', () => {
+    document.getElementById('al-pending-popup').style.display = 'none';
+  });
+  document.getElementById('al-pending-popup')?.addEventListener('click', e => {
+    if (e.target.id === 'al-pending-popup') document.getElementById('al-pending-popup').style.display = 'none';
+  });
   document.getElementById('al-edit-popup-close')?.addEventListener('click', () => {
     document.getElementById('al-edit-popup').style.display = 'none';
   });
   document.getElementById('al-edit-popup')?.addEventListener('click', e => {
-    if (e.target.id === 'al-edit-popup')
-      document.getElementById('al-edit-popup').style.display = 'none';
+    if (e.target.id === 'al-edit-popup') document.getElementById('al-edit-popup').style.display = 'none';
+  });
+  document.getElementById('al-edit-toggle-course')?.addEventListener('change', function () {
+    syncBody(this, document.getElementById('al-edit-course-body'));
+  });
+  document.getElementById('al-edit-toggle-res')?.addEventListener('change', function () {
+    syncBody(this, document.getElementById('al-edit-res-body'));
   });
 
-  /* ── Durée edit ── */
+  // Durée edit
   let editDuration = 60;
   document.getElementById('al-edit-duration-up')?.addEventListener('click', () => {
     editDuration += 20;
-    const n = document.getElementById('al-edit-duration-num');
-    const h = document.getElementById('al-edit-duration-seconds');
-    if (n) n.textContent = editDuration; if (h) h.value = editDuration;
+    const n=document.getElementById('al-edit-duration-num'), h=document.getElementById('al-edit-duration-seconds');
+    if(n) n.textContent=editDuration; if(h) h.value=editDuration;
   });
   document.getElementById('al-edit-duration-down')?.addEventListener('click', () => {
-    if (editDuration > 20) {
-      editDuration -= 20;
-      const n = document.getElementById('al-edit-duration-num');
-      const h = document.getElementById('al-edit-duration-seconds');
-      if (n) n.textContent = editDuration; if (h) h.value = editDuration;
+    if (editDuration > 20) { editDuration -= 20;
+      const n=document.getElementById('al-edit-duration-num'), h=document.getElementById('al-edit-duration-seconds');
+      if(n) n.textContent=editDuration; if(h) h.value=editDuration;
     }
   });
 
-  /* ── Toggle cours edit ── */
-  document.getElementById('al-edit-toggle-course')?.addEventListener('change', function () {
-    const body = document.getElementById('al-edit-course-body');
-    if (this.checked) { body.style.display = 'flex'; body.classList.add('af-body-open'); }
-    else              { body.style.display = 'none';  body.classList.remove('af-body-open'); }
-  });
-
-  /* ── Toggle ressource edit ── */
-  document.getElementById('al-edit-toggle-res')?.addEventListener('change', function () {
-    const body = document.getElementById('al-edit-res-body');
-    if (this.checked) { body.style.display = 'flex'; body.classList.add('af-body-open'); }
-    else              { body.style.display = 'none';  body.classList.remove('af-body-open'); }
-  });
-
-  /* ── Richtext edit ── */
-  const editCorp   = document.getElementById('al-edit-corp');
-  const editCorpH  = document.getElementById('al-edit-corp-hidden');
+  // Richtext edit
+  const editCorp  = document.getElementById('al-edit-corp');
+  const editCorpH = document.getElementById('al-edit-corp-hidden');
   document.querySelectorAll('.af-rt-btn[data-editor="al-edit-corp"]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.execCommand(btn.dataset.cmd, false, btn.dataset.val || null);
-      editCorp?.focus();
-    });
+    btn.addEventListener('click', () => { document.execCommand(btn.dataset.cmd, false, btn.dataset.val||null); editCorp?.focus(); });
   });
-  editCorp?.addEventListener('input', () => { if (editCorpH) editCorpH.value = editCorp.innerHTML; });
+  editCorp?.addEventListener('input', () => { if(editCorpH) editCorpH.value = editCorp.innerHTML; });
 
-  // Lien dans edit
+  // Lien edit
   let editSavedRange = null;
   document.getElementById('al-edit-rt-link-btn')?.addEventListener('click', () => {
-    const sel = window.getSelection();
-    if (sel && sel.rangeCount) editSavedRange = sel.getRangeAt(0).cloneRange();
-    const p = document.getElementById('al-edit-link-popup');
-    if (p) p.style.display = p.style.display === 'none' ? 'flex' : 'none';
-    if (p) p.style.flexDirection = 'column';
+    const s=window.getSelection(); if(s&&s.rangeCount) editSavedRange=s.getRangeAt(0).cloneRange();
+    const p=document.getElementById('al-edit-link-popup');
+    if(p) { p.style.display = p.style.display==='none' ? 'flex' : 'none'; p.style.flexDirection='column'; }
   });
   document.getElementById('al-edit-link-confirm')?.addEventListener('click', () => {
-    const text = document.getElementById('al-edit-link-text')?.value.trim();
-    const url  = document.getElementById('al-edit-link-url')?.value.trim();
-    if (!url) return;
-    if (editSavedRange) { const s=window.getSelection(); s.removeAllRanges(); s.addRange(editSavedRange); }
-    const a = document.createElement('a'); a.href=url; a.target='_blank'; a.textContent=text||url;
-    document.execCommand('insertHTML', false, a.outerHTML);
-    document.getElementById('al-edit-link-popup').style.display = 'none';
-    document.getElementById('al-edit-link-text').value = '';
-    document.getElementById('al-edit-link-url').value  = '';
+    const text=document.getElementById('al-edit-link-text')?.value.trim();
+    const url=document.getElementById('al-edit-link-url')?.value.trim();
+    if(!url) return;
+    if(editSavedRange){ const s=window.getSelection(); s.removeAllRanges(); s.addRange(editSavedRange); }
+    const a=document.createElement('a'); a.href=url; a.target='_blank'; a.textContent=text||url;
+    document.execCommand('insertHTML',false,a.outerHTML);
+    document.getElementById('al-edit-link-popup').style.display='none';
+    document.getElementById('al-edit-link-text').value='';
+    document.getElementById('al-edit-link-url').value='';
   });
   document.getElementById('al-edit-link-cancel')?.addEventListener('click', () => {
-    document.getElementById('al-edit-link-popup').style.display = 'none';
+    document.getElementById('al-edit-link-popup').style.display='none';
   });
 
-  /* ── Upload image edit ── */
-  async function uploadImage(file, statusEl, previewEl, placeholderEl, hiddenEl) {
-    if (!file) return;
-    if (statusEl) statusEl.textContent = '⏳ Upload en cours…';
-    const fd = new FormData(); fd.append('file', file);
-    try {
-      const res  = await fetch(UPLOAD_URL, { method:'POST', headers:{'Authorization':'Bearer '+getToken()}, body:fd });
-      const data = await res.json();
-      const raw  = data?.url || data?.path || data?.uploaded_file?.url || data?.uploaded_file?.path || '';
-      const url  = raw ? (raw.startsWith('http') ? raw : XANO_BASE + raw) : '';
-      if (url) {
-        if (hiddenEl)      hiddenEl.value = url;
-        if (previewEl)     { previewEl.src = url; previewEl.style.display = 'block'; }
-        if (placeholderEl) placeholderEl.style.display = 'none';
-        if (statusEl)      statusEl.textContent = '✅ Image uploadée';
-      } else { if (statusEl) statusEl.textContent = '❌ Erreur upload'; }
-    } catch { if (statusEl) statusEl.textContent = '❌ Erreur réseau'; }
-  }
-
+  // Upload image article edit
   const editImgZone = document.getElementById('al-edit-img-zone');
   const editImgFile = document.getElementById('al-edit-img-file');
   editImgZone?.addEventListener('click', () => editImgFile?.click());
   editImgFile?.addEventListener('change', () => {
-    if (editImgFile.files[0]) uploadImage(editImgFile.files[0],
+    if(editImgFile.files[0]) uploadImage(editImgFile.files[0],
       document.getElementById('al-edit-img-status'),
       document.getElementById('al-edit-img-preview'),
       document.getElementById('al-edit-img-placeholder'),
@@ -976,250 +1048,214 @@
     );
   });
 
-  /* ── Ressources edit ── */
-  function fillEditRessources(selectedId) {
-    const sel = document.getElementById('al-edit-res-select');
-    const hid = document.getElementById('al-edit-res-id');
-    const ressources = getAuth()?.freelance?.ressources || [];
-    if (!sel) return;
-    sel.innerHTML = '<option value="">— Sélectionner une ressource —</option>';
-    ressources.forEach(r => {
-      const o = document.createElement('option');
-      o.value = r.id; o.textContent = r.short_title || r.title || 'Ressource #' + r.id;
-      if (r.id === selectedId) o.selected = true;
-      sel.appendChild(o);
-    });
-    if (hid) hid.value = selectedId || '';
-    sel.addEventListener('change', () => { if (hid) hid.value = sel.value; });
-  }
-
-  // Popup nouvelle ressource (edit)
-  const editNewResPopup = document.getElementById('al-edit-new-res-popup');
-  document.getElementById('al-edit-open-res-popup')?.addEventListener('click', () => {
-    if (editNewResPopup) editNewResPopup.style.display = 'flex';
-  });
-  document.getElementById('al-edit-new-res-close')?.addEventListener('click', () => {
-    if (editNewResPopup) editNewResPopup.style.display = 'none';
-  });
-  editNewResPopup?.addEventListener('click', e => {
-    if (e.target === editNewResPopup) editNewResPopup.style.display = 'none';
-  });
-
-  // Upload image ressource edit
-  const editResImgZone = document.getElementById('al-edit-res-img-zone');
-  const editResImgFile = document.getElementById('al-edit-res-img-file');
-  editResImgZone?.addEventListener('click', () => editResImgFile?.click());
-  editResImgFile?.addEventListener('change', () => {
-    if (editResImgFile.files[0]) uploadImage(editResImgFile.files[0],
-      document.getElementById('al-edit-res-img-status'),
-      document.getElementById('al-edit-res-img-preview'),
-      document.getElementById('al-edit-res-img-placeholder'),
-      document.getElementById('al-edit-res-url-img')
-    );
-  });
-
-  // Publier ressource depuis edit
-  document.getElementById('al-edit-publish-res-btn')?.addEventListener('click', async () => {
-    const titleEl      = document.getElementById('al-edit-res-title');
-    const shortTitleEl = document.getElementById('al-edit-res-short-title');
-    const linkEl       = document.getElementById('al-edit-res-link');
-    const title        = titleEl?.value?.trim();
-    const short_title  = shortTitleEl?.value?.trim();
-    const description  = document.getElementById('al-edit-res-description')?.value?.trim();
-    const link         = linkEl?.value?.trim();
-    const url_img      = document.getElementById('al-edit-res-url-img')?.value?.trim();
-    if (!title || !short_title || !link) { alert('Titre, titre court et lien sont obligatoires.'); return; }
-
-    const btn = document.getElementById('al-edit-publish-res-btn');
-    btn.disabled = true; btn.textContent = '⏳ Publication…';
-    try {
-      const res = await fetch(ADD_RES_URL, {
-        method:'POST',
-        headers:{'Content-Type':'application/json','Authorization':'Bearer '+getToken()},
-        body: JSON.stringify({ freelance_id:getFreelanceId(), title, short_title, description, short_description:'', ressource_link:link, url_img }),
-      });
-      if (!res.ok) throw new Error('Erreur ' + res.status);
-      const r2 = await fetch(REFRESH_URL, { headers:{'Authorization':'Bearer '+getToken()} });
-      if (r2.ok) { const d = await r2.json(); localStorage.setItem('auth', JSON.stringify(Object.assign({}, getAuth(), d))); }
-
-      // Refresh select
-      const lastRes = getAuth()?.freelance?.ressources?.slice(-1)[0];
-      fillEditRessources(lastRes?.id);
-
-      // Message
-      const msg = document.getElementById('al-edit-res-added-msg');
-      if (msg) msg.style.display = 'flex';
-      if (editNewResPopup) editNewResPopup.style.display = 'none';
-      btn.textContent = '✅ Ressource publiée !';
-      setTimeout(() => { btn.disabled = false; btn.textContent = 'Publier la ressource'; }, 2000);
-    } catch(e) {
-      btn.disabled = false; btn.textContent = 'Publier la ressource';
-      alert('Erreur : ' + e.message);
-    }
-  });
-
-  /* ── Soumettre modification ── */
+  // Soumettre modification article
   document.getElementById('al-edit-submit-btn')?.addEventListener('click', async () => {
-    const article_id       = parseInt(document.getElementById('al-edit-article-id')?.value || '0');
+    const article_id       = parseInt(document.getElementById('al-edit-article-id')?.value||'0');
     const title            = document.getElementById('al-edit-title')?.value?.trim();
     const short_description= document.getElementById('al-edit-short-description')?.value?.trim();
-    const corp_text        = document.getElementById('al-edit-corp-hidden')?.value || document.getElementById('al-edit-corp')?.innerHTML || '';
-    const url_img          = document.getElementById('al-edit-url-img')?.value?.trim() || '';
-    const category_id      = parseInt(document.getElementById('al-edit-category-id')?.value || '0');
-    const duration_seconds = parseInt(document.getElementById('al-edit-duration-seconds')?.value || '60');
-    const toggleCourse     = document.getElementById('al-edit-toggle-course');
-    const is_course_linked = toggleCourse?.checked || false;
-    const course_id        = is_course_linked ? parseInt(document.getElementById('al-edit-course-id')?.value || '0') : 0;
-    const toggleRes        = document.getElementById('al-edit-toggle-res');
-    const is_ressource     = toggleRes?.checked || false;
-    const ressource_id     = is_ressource ? parseInt(document.getElementById('al-edit-res-id')?.value || '0') : 0;
+    const corp_text        = document.getElementById('al-edit-corp-hidden')?.value || editCorp?.innerHTML || '';
+    const url_img          = document.getElementById('al-edit-url-img')?.value?.trim()||'';
+    const category_id      = parseInt(document.getElementById('al-edit-category-id')?.value||'0');
+    const duration_seconds = parseInt(document.getElementById('al-edit-duration-seconds')?.value||'60');
+    const tc               = document.getElementById('al-edit-toggle-course');
+    const is_course_linked = tc?.checked||false;
+    const course_id        = is_course_linked ? parseInt(document.getElementById('al-edit-course-id')?.value||'0') : 0;
+    const tr               = document.getElementById('al-edit-toggle-res');
+    const is_ressource     = tr?.checked||false;
+    const ressource_id     = is_ressource ? parseInt(document.getElementById('al-edit-res-id')?.value||'0') : 0;
     const freelance_id     = getFreelanceId();
 
     if (!title)       { alert('Le titre est obligatoire.'); return; }
     if (!category_id) { alert('Choisissez une catégorie.'); return; }
 
     const btn = document.getElementById('al-edit-submit-btn');
-    btn.disabled = true; btn.textContent = '⏳ Enregistrement…';
+    btn.disabled=true; btn.textContent='⏳ Enregistrement…';
 
     try {
       const res = await fetch(MODIFY_URL, {
         method:'POST',
         headers:{'Content-Type':'application/json','Authorization':'Bearer '+getToken()},
-        body: JSON.stringify({ article_id, freelance_id, title, short_description, corp_text, url_img, category_id, duration_seconds, is_course_linked, course_id, is_ressource, ressource_id }),
+        body: JSON.stringify({article_id,freelance_id,title,short_description,corp_text,url_img,category_id,duration_seconds,is_course_linked,course_id,is_ressource,ressource_id}),
       });
-      if (!res.ok) { const d = await res.json(); throw new Error(d?.message || 'Erreur ' + res.status); }
-      const r2 = await fetch(REFRESH_URL, { headers:{'Authorization':'Bearer '+getToken()} });
-      if (r2.ok) { const d = await r2.json(); localStorage.setItem('auth', JSON.stringify(Object.assign({}, getAuth(), d))); }
-
-      btn.textContent = '✅ Modifications enregistrées !';
+      if (!res.ok) { const d=await res.json(); throw new Error(d?.message||'Erreur '+res.status); }
+      const r2 = await fetch(REFRESH_URL, {headers:{'Authorization':'Bearer '+getToken()}});
+      if (r2.ok) { const d=await r2.json(); localStorage.setItem('auth',JSON.stringify(Object.assign({},getAuth(),d))); }
+      btn.textContent='✅ Modifications enregistrées !';
       setTimeout(() => {
-        document.getElementById('al-edit-popup').style.display = 'none';
-        btn.disabled = false; btn.textContent = '💾 Enregistrer les modifications';
-        init(); // Refresh la liste
+        document.getElementById('al-edit-popup').style.display='none';
+        btn.disabled=false; btn.textContent='💾 Enregistrer les modifications';
+        init();
       }, 1800);
     } catch(e) {
-      btn.disabled = false; btn.textContent = '💾 Enregistrer les modifications';
-      alert('Erreur : ' + e.message);
+      btn.disabled=false; btn.textContent='💾 Enregistrer les modifications';
+      alert('Erreur : '+e.message);
     }
   });
 
   /* ══════════════════════════════════════
-     GRAPHIQUE VUES PAR ARTICLE
+     EDIT RESSOURCE
   ══════════════════════════════════════ */
-  function renderChart(articles) {
-    const wrap = document.getElementById('al-chart-wrap');
-    if (!wrap) return;
-    wrap.innerHTML = '';
+  function openEditResPopup(res) {
+    const popup = document.getElementById('al-edit-res-popup');
+    if (!popup) return;
+    document.getElementById('al-edit-res-popup-title').textContent = res.title || res.short_title || '—';
+    document.getElementById('al-res-edit-id').value           = res.id;
+    document.getElementById('al-res-edit-title').value        = res.title || '';
+    document.getElementById('al-res-edit-short-title').value  = res.short_title || res.title_short || '';
+    document.getElementById('al-res-edit-description').value  = res.description || res.description_short || '';
+    document.getElementById('al-res-edit-link').value         = res.lien_ressource || res.ressource_link || '';
+    document.getElementById('al-res-edit-url-img').value      = res.url_image || '';
 
-    if (articles.length === 0) {
-      wrap.innerHTML = '<div class="al-chart-empty">Aucune donnée à afficher.</div>';
-      return;
-    }
+    const rp = document.getElementById('al-res-edit-img-preview');
+    const rph= document.getElementById('al-res-edit-img-placeholder');
+    if (res.url_image) { rp.src=res.url_image; rp.style.display='block'; rph.style.display='none'; }
+    else               { rp.style.display='none'; rph.style.display='flex'; }
 
-    const max = Math.max(...articles.map(a => a.nb_view || 0), 1);
-
-    articles.forEach(a => {
-      const col = document.createElement('div');
-      col.className = 'al-chart-col';
-
-      const bar = document.createElement('div');
-      bar.className = 'al-chart-bar';
-      const pct = Math.max(((a.nb_view || 0) / max) * 85, 3);
-      bar.style.height = '0%';
-      bar.dataset.count = (a.nb_view || 0) + ' vue' + ((a.nb_view || 0) !== 1 ? 's' : '');
-      setTimeout(() => { bar.style.height = pct + '%'; }, 100);
-
-      const lbl = document.createElement('div');
-      lbl.className = 'al-chart-label';
-      lbl.textContent = a.title ? a.title.split(' ').slice(0,3).join(' ') + '…' : '—';
-      lbl.title = a.title || '';
-
-      col.appendChild(bar);
-      col.appendChild(lbl);
-      wrap.appendChild(col);
-    });
+    popup.style.display = 'flex';
   }
 
-  /* ══════════════════════════════════════
-     NOTIFICATIONS
-  ══════════════════════════════════════ */
-  async function loadNotifications() {
-    const listEl  = document.getElementById('al-notif-list');
-    const badgeEl = document.getElementById('al-notif-badge');
-    if (!listEl) return;
+  document.getElementById('al-edit-res-popup-close')?.addEventListener('click', () => {
+    document.getElementById('al-edit-res-popup').style.display = 'none';
+  });
+  document.getElementById('al-edit-res-popup')?.addEventListener('click', e => {
+    if (e.target.id === 'al-edit-res-popup') document.getElementById('al-edit-res-popup').style.display = 'none';
+  });
 
-    // ── Placeholder jusqu'à ce que l'endpoint soit créé ──
-    if (!NOTIF_URL) {
-      renderNotifications([], listEl, badgeEl);
-      return;
-    }
+  // Upload image ressource edit
+  const resEditImgZone = document.getElementById('al-res-edit-img-zone');
+  const resEditImgFile = document.getElementById('al-res-edit-img-file');
+  resEditImgZone?.addEventListener('click', () => resEditImgFile?.click());
+  resEditImgFile?.addEventListener('change', () => {
+    if (resEditImgFile.files[0]) uploadImage(resEditImgFile.files[0],
+      document.getElementById('al-res-edit-img-status'),
+      document.getElementById('al-res-edit-img-preview'),
+      document.getElementById('al-res-edit-img-placeholder'),
+      document.getElementById('al-res-edit-url-img')
+    );
+  });
+
+  document.getElementById('al-res-edit-submit-btn')?.addEventListener('click', async () => {
+    const id          = parseInt(document.getElementById('al-res-edit-id')?.value||'0');
+    const title       = document.getElementById('al-res-edit-title')?.value?.trim();
+    const short_title = document.getElementById('al-res-edit-short-title')?.value?.trim();
+    const description = document.getElementById('al-res-edit-description')?.value?.trim();
+    const link        = document.getElementById('al-res-edit-link')?.value?.trim();
+    const url_img     = document.getElementById('al-res-edit-url-img')?.value?.trim();
+
+    if (!title||!short_title||!link) { alert('Titre, titre court et lien sont obligatoires.'); return; }
+
+    const btn = document.getElementById('al-res-edit-submit-btn');
+    btn.disabled=true; btn.textContent='⏳ Enregistrement…';
 
     try {
-      const res = await fetch(NOTIF_URL, { headers:{'Authorization':'Bearer '+getToken()} });
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      const notifs = Array.isArray(data) ? data : (data?.notifications || []);
-      renderNotifications(notifs, listEl, badgeEl);
-    } catch {
-      renderNotifications([], listEl, badgeEl);
+      const res = await fetch(MODIFY_RES_URL, {
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+getToken()},
+        body: JSON.stringify({ressource_id:id, freelance_id:getFreelanceId(), title, short_title, description, short_description:description, ressource_link:link, url_img}),
+      });
+      if (!res.ok) { const d=await res.json(); throw new Error(d?.message||'Erreur '+res.status); }
+      const r2 = await fetch(REFRESH_URL, {headers:{'Authorization':'Bearer '+getToken()}});
+      if (r2.ok) { const d=await r2.json(); localStorage.setItem('auth',JSON.stringify(Object.assign({},getAuth(),d))); }
+      btn.textContent='✅ Ressource mise à jour !';
+      setTimeout(() => {
+        document.getElementById('al-edit-res-popup').style.display='none';
+        btn.disabled=false; btn.textContent='💾 Enregistrer';
+        renderRessources(getAuth()?.freelance?.ressources||[]);
+      }, 1800);
+    } catch(e) {
+      btn.disabled=false; btn.textContent='💾 Enregistrer';
+      alert('Erreur : '+e.message);
     }
-  }
+  });
 
-  function renderNotifications(notifs, listEl, badgeEl) {
-    listEl.innerHTML = '';
+  /* ══════════════════════════════════════
+     NOUVELLE RESSOURCE INDÉPENDANTE
+  ══════════════════════════════════════ */
+  document.getElementById('al-btn-new-ressource')?.addEventListener('click', () => {
+    document.getElementById('al-new-res-standalone-popup').style.display = 'flex';
+  });
+  document.getElementById('al-new-res-standalone-close')?.addEventListener('click', () => {
+    document.getElementById('al-new-res-standalone-popup').style.display = 'none';
+  });
+  document.getElementById('al-new-res-standalone-popup')?.addEventListener('click', e => {
+    if (e.target.id === 'al-new-res-standalone-popup')
+      document.getElementById('al-new-res-standalone-popup').style.display = 'none';
+  });
 
-    // Notifications non vues
-    const newOnes = notifs.filter(n => !n.is_view);
-    const all     = notifs;
+  // Upload image nouvelle ressource standalone
+  const newResImgZone = document.getElementById('al-new-res-img-zone');
+  const newResImgFile = document.getElementById('al-new-res-img-file');
+  newResImgZone?.addEventListener('click', () => newResImgFile?.click());
+  newResImgFile?.addEventListener('change', () => {
+    if (newResImgFile.files[0]) uploadImage(newResImgFile.files[0],
+      document.getElementById('al-new-res-img-status'),
+      document.getElementById('al-new-res-img-preview'),
+      document.getElementById('al-new-res-img-placeholder'),
+      document.getElementById('al-new-res-url-img')
+    );
+  });
 
-    if (badgeEl) {
-      badgeEl.textContent = newOnes.length;
-      badgeEl.style.display = newOnes.length > 0 ? 'inline-flex' : 'none';
+  document.getElementById('al-new-res-submit-btn')?.addEventListener('click', async () => {
+    const title       = document.getElementById('al-new-res-title')?.value?.trim();
+    const short_title = document.getElementById('al-new-res-short-title')?.value?.trim();
+    const description = document.getElementById('al-new-res-description')?.value?.trim();
+    const link        = document.getElementById('al-new-res-link')?.value?.trim();
+    const url_img     = document.getElementById('al-new-res-url-img')?.value?.trim();
+
+    if (!title||!short_title||!link) { alert('Titre, titre court et lien sont obligatoires.'); return; }
+
+    const btn = document.getElementById('al-new-res-submit-btn');
+    btn.disabled=true; btn.textContent='⏳ Publication…';
+
+    try {
+      const res = await fetch(ADD_RES_URL, {
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+getToken()},
+        body: JSON.stringify({freelance_id:getFreelanceId(), title, short_title, description, short_description:description, ressource_link:link, url_img}),
+      });
+      if (!res.ok) { const d=await res.json(); throw new Error(d?.message||'Erreur '+res.status); }
+      const r2 = await fetch(REFRESH_URL, {headers:{'Authorization':'Bearer '+getToken()}});
+      if (r2.ok) { const d=await r2.json(); localStorage.setItem('auth',JSON.stringify(Object.assign({},getAuth(),d))); }
+
+      // Reset form
+      ['al-new-res-title','al-new-res-short-title','al-new-res-description','al-new-res-link','al-new-res-url-img'].forEach(id=>{
+        const el=document.getElementById(id); if(el) el.value='';
+      });
+      const rp=document.getElementById('al-new-res-img-preview'), rph=document.getElementById('al-new-res-img-placeholder');
+      if(rp){rp.src='';rp.style.display='none';} if(rph) rph.style.display='flex';
+      document.getElementById('al-new-res-img-status').textContent='';
+
+      btn.textContent='✅ Ressource publiée !';
+      setTimeout(() => {
+        document.getElementById('al-new-res-standalone-popup').style.display='none';
+        btn.disabled=false; btn.textContent='🚀 Publier la ressource';
+        renderRessources(getAuth()?.freelance?.ressources||[]);
+      }, 1800);
+    } catch(e) {
+      btn.disabled=false; btn.textContent='🚀 Publier la ressource';
+      alert('Erreur : '+e.message);
     }
+  });
 
-    if (all.length === 0) {
-      listEl.innerHTML = `
-        <div class="al-notif-empty">
-          <span class="al-notif-empty-icon">🔕</span>
-          Pas de nouvelle notification pour le moment.
-        </div>`;
-      return;
-    }
-
-    const ul = document.createElement('div');
-    ul.className = 'al-notif-list';
-
-    all.forEach(n => {
-      const item = document.createElement('div');
-      item.className = 'al-notif-item' + (!n.is_view ? ' new' : '');
-
-      const typeConfig = getNotifConfig(n);
-      item.innerHTML = `
-        <span class="al-notif-icon">${typeConfig.icon}</span>
-        <span class="al-notif-text">${typeConfig.text}</span>
-        <span class="al-notif-time">${formatRelativeTime(n.created_at)}</span>
-      `;
-      ul.appendChild(item);
-    });
-
-    listEl.appendChild(ul);
-  }
-
-  function getNotifConfig(n) {
-    // Types attendus : note, ressource_download
-    if (n.type === 'note') {
-      return {
-        icon: '⭐',
-        text: `Nouvelle note <strong>${n.note}/5</strong> reçue sur "<strong>${n.article_title || 'votre article'}</strong>"`,
-      };
-    }
-    if (n.type === 'ressource_download') {
-      return {
-        icon: '📥',
-        text: `"<strong>${n.ressource_title || 'Votre ressource'}</strong>" a été téléchargée par un nouveau lecteur.`,
-      };
-    }
-    return { icon: '🔔', text: n.message || 'Nouvelle notification' };
+  /* ══════════════════════════════════════
+     UPLOAD IMAGE (helper)
+  ══════════════════════════════════════ */
+  async function uploadImage(file, statusEl, previewEl, placeholderEl, hiddenEl) {
+    if (!file) return;
+    if (statusEl) statusEl.textContent='⏳ Upload en cours…';
+    const fd=new FormData(); fd.append('file',file);
+    try {
+      const res=await fetch(UPLOAD_URL,{method:'POST',headers:{'Authorization':'Bearer '+getToken()},body:fd});
+      const data=await res.json();
+      const raw=data?.url||data?.path||data?.uploaded_file?.url||data?.uploaded_file?.path||'';
+      const url=raw?(raw.startsWith('http')?raw:XANO_BASE+raw):'';
+      if(url){
+        if(hiddenEl) hiddenEl.value=url;
+        if(previewEl){previewEl.src=url;previewEl.style.display='block';}
+        if(placeholderEl) placeholderEl.style.display='none';
+        if(statusEl) statusEl.textContent='✅ Image uploadée';
+      } else { if(statusEl) statusEl.textContent='❌ Erreur upload'; }
+    } catch { if(statusEl) statusEl.textContent='❌ Erreur réseau'; }
   }
 
   /* ══════════════════════════════════════
@@ -1227,45 +1263,19 @@
   ══════════════════════════════════════ */
   document.getElementById('al-btn-new-article')?.addEventListener('click', () => {
     if (formSection) {
-      formSection.style.display = 'block';
-      formSection.scrollIntoView({ behavior:'smooth', block:'start' });
+      formSection.style.display='block';
+      formSection.scrollIntoView({behavior:'smooth',block:'start'});
     }
   });
 
-  /* ══════════════════════════════════════
-     HELPERS
-  ══════════════════════════════════════ */
-  function fmt(n) { return (n || 0).toLocaleString('fr-FR'); }
-
-  function formatDuration(sec) {
-    if (!sec) return '—';
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    return m > 0 ? `${m} min${s > 0 ? ' ' + s + 's' : ''}` : `${s}s`;
-  }
-
-  function formatRelativeTime(ts) {
-    if (!ts) return '';
-    const diff = Date.now() - ts;
-    const m = Math.floor(diff / 60000);
-    if (m < 1)  return 'À l\'instant';
-    if (m < 60) return `Il y a ${m} min`;
-    const h = Math.floor(m / 60);
-    if (h < 24) return `Il y a ${h}h`;
-    const d = Math.floor(h / 24);
-    return `Il y a ${d}j`;
-  }
-
-  /* ── Echap ferme les popups ── */
+  /* ── Echap ── */
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
-    ['al-pending-popup','al-edit-popup','al-edit-new-res-popup'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.style.display = 'none';
+    ['al-pending-popup','al-edit-popup','al-edit-res-popup','al-new-res-standalone-popup'].forEach(id => {
+      const el=document.getElementById(id); if(el) el.style.display='none';
     });
   });
 
-  /* ── Lancer ── */
   init();
 
 })();
