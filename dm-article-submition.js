@@ -33,13 +33,71 @@
   const mktTopline = document.getElementById('art-mkt-topline');
   if (!section) return;
 
+  function resetForm() {
+    // Reset tous les champs
+    const titleEl = document.getElementById('af-title');
+    const shortEl = document.getElementById('af-short-description');
+    const corpEl  = document.getElementById('af-corp-text');
+    const corpH   = document.getElementById('af-corp-text-hidden');
+    const urlImg  = document.getElementById('af-url-img');
+    const catSel  = document.getElementById('af-category-select');
+    const catIn   = document.getElementById('af-category-id');
+    if (titleEl) titleEl.value = '';
+    if (shortEl) shortEl.value = '';
+    if (corpEl)  corpEl.innerHTML = '';
+    if (corpH)   corpH.value = '';
+    if (urlImg)  urlImg.value = '';
+    if (catSel)  catSel.value = '';
+    if (catIn)   catIn.value = '';
+    duration = 60;
+    if (durNum)    durNum.textContent = 60;
+    if (durHidden) durHidden.value = 60;
+    // Reset image
+    const prev = document.getElementById('af-img-preview');
+    const ph   = document.getElementById('af-img-placeholder');
+    const stat = document.getElementById('af-img-status');
+    if (prev) { prev.src = ''; prev.style.display = 'none'; }
+    if (ph)   ph.style.display = 'flex';
+    if (stat) stat.textContent = '';
+    // Reset toggles
+    if (toggleCourse) { toggleCourse.checked = true; syncCourseBody(); }
+    if (toggleRes)    { toggleRes.checked    = true; syncResBody(); }
+    const courseId = document.getElementById('af-course-id');
+    const resId    = document.getElementById('af-ressource-id');
+    if (courseId) courseId.value = '';
+    if (resId)    resId.value = '';
+    if (courseSelect) courseSelect.value = '';
+    if (resSelect)    resSelect.value = '';
+    // Reset erreurs
+    document.querySelectorAll('#section-article-form .af-field-error').forEach(e => e.style.display = 'none');
+  }
+
+  // Exposer resetForm pour dr-article-list.js
+  window.resetArticleForm = resetForm;
+
   function showForm() {
+    resetForm();
     section.style.display = 'block';
     if (mktSection) mktSection.style.display = 'none';
     if (mktTopline) mktTopline.style.display  = 'none';
     section.scrollIntoView({ behavior:'smooth', block:'start' });
   }
   document.addEventListener('article-start-writing', showForm);
+
+  // MODIF 6 — bouton abandon
+  document.addEventListener('click', e => {
+    if (!e.target.closest('#af-abandon-btn')) return;
+    section.style.display = 'none';
+    const auth     = getAuth();
+    const articles = auth?.freelance?.article || [];
+    if (articles.length > 0) {
+      const listSection = document.getElementById('section-article-list');
+      if (listSection) { listSection.style.display = 'flex'; }
+    } else {
+      if (mktSection) mktSection.style.display = 'block';
+      if (mktTopline) mktTopline.style.display  = 'block';
+    }
+  });
 
   /* ── Catégories ── */
   const catSelect = document.getElementById('af-category-select');
@@ -526,7 +584,11 @@
 
       submitBtn.textContent = '✅ Article publié !';
       document.dispatchEvent(new CustomEvent('article-published'));
-      setTimeout(() => { section.style.display = 'none'; submitBtn.disabled = false; submitBtn.textContent = '🚀 Publier l\'article'; }, 2000);
+      setTimeout(() => {
+        section.style.display = 'none';
+        submitBtn.disabled = false;
+        submitBtn.textContent = '🚀 Publier l\'article';
+      }, 2200);
 
     } catch(e) {
       submitBtn.disabled = false; submitBtn.textContent = '🚀 Publier l\'article';
@@ -689,7 +751,13 @@
     }
   }
 
-  document.addEventListener('article-published', () => setTimeout(init, 500));
+  document.addEventListener('article-published', () => {
+    // Attendre que le formulaire soit complètement caché avant d'afficher la section
+    setTimeout(() => {
+      if (formSection) formSection.style.display = 'none';
+      init();
+    }, 2200);
+  });
 
   /* ══════════════════════════════════════
      ARTICLES
@@ -989,6 +1057,20 @@
     else                { body.style.display='none';  body.classList.remove('af-body-open'); }
   }
 
+  // Modif 3 — gérer classe body pour navbar
+  function openPopup(id) {
+    const el = document.getElementById(id);
+    if (el) { el.style.display = 'flex'; document.body.classList.add('popup-open'); }
+  }
+  function closePopup(id) {
+    const el = document.getElementById(id);
+    if (el) { el.style.display = 'none'; }
+    // Retirer la classe si plus aucun popup ouvert
+    const anyOpen = ['al-pending-popup','al-edit-popup','al-edit-res-popup','al-new-res-standalone-popup']
+      .some(pid => { const p = document.getElementById(pid); return p && p.style.display !== 'none'; });
+    if (!anyOpen) document.body.classList.remove('popup-open');
+  }
+
   document.getElementById('al-pending-popup-close')?.addEventListener('click', () => {
     document.getElementById('al-pending-popup').style.display = 'none';
   });
@@ -1138,18 +1220,7 @@
     if (e.target.id === 'al-edit-res-popup') document.getElementById('al-edit-res-popup').style.display = 'none';
   });
 
-  // Upload image ressource edit
-  const resEditImgZone = document.getElementById('al-res-edit-img-zone');
-  const resEditImgFile = document.getElementById('al-res-edit-img-file');
-  resEditImgZone?.addEventListener('click', () => resEditImgFile?.click());
-  resEditImgFile?.addEventListener('change', () => {
-    if (resEditImgFile.files[0]) uploadImage(resEditImgFile.files[0],
-      document.getElementById('al-res-edit-img-status'),
-      document.getElementById('al-res-edit-img-preview'),
-      document.getElementById('al-res-edit-img-placeholder'),
-      document.getElementById('al-res-edit-url-img')
-    );
-  });
+  // Image ressource supprimée (modif 7)
 
   document.getElementById('al-res-edit-submit-btn')?.addEventListener('click', async () => {
     const id          = parseInt(document.getElementById('al-res-edit-id')?.value||'0');
@@ -1168,7 +1239,7 @@
       const res = await fetch(MODIFY_RES_URL, {
         method:'POST',
         headers:{'Content-Type':'application/json','Authorization':'Bearer '+getToken()},
-        body: JSON.stringify({ressource_id:id, freelance_id:getFreelanceId(), title, short_title, description, short_description:description, ressource_link:link, url_img}),
+        body: JSON.stringify({ressource_id:id, freelance_id:getFreelanceId(), title, short_title, description, short_description:description, ressource_link:link}),
       });
       if (!res.ok) { const d=await res.json(); throw new Error(d?.message||'Erreur '+res.status); }
       const r2 = await fetch(REFRESH_URL, {headers:{'Authorization':'Bearer '+getToken()}});
@@ -1199,18 +1270,7 @@
       document.getElementById('al-new-res-standalone-popup').style.display = 'none';
   });
 
-  // Upload image nouvelle ressource standalone
-  const newResImgZone = document.getElementById('al-new-res-img-zone');
-  const newResImgFile = document.getElementById('al-new-res-img-file');
-  newResImgZone?.addEventListener('click', () => newResImgFile?.click());
-  newResImgFile?.addEventListener('change', () => {
-    if (newResImgFile.files[0]) uploadImage(newResImgFile.files[0],
-      document.getElementById('al-new-res-img-status'),
-      document.getElementById('al-new-res-img-preview'),
-      document.getElementById('al-new-res-img-placeholder'),
-      document.getElementById('al-new-res-url-img')
-    );
-  });
+  // Image nouvelle ressource supprimée (modif 7)
 
   document.getElementById('al-new-res-submit-btn')?.addEventListener('click', async () => {
     const title       = document.getElementById('al-new-res-title')?.value?.trim();
@@ -1232,7 +1292,7 @@
       const res = await fetch(ADD_RES_URL, {
         method:'POST',
         headers:{'Content-Type':'application/json','Authorization':'Bearer '+getToken()},
-        body: JSON.stringify({freelance_id:getFreelanceId(), title, short_title, description, short_description:description, ressource_link:link, url_img}),
+        body: JSON.stringify({freelance_id:getFreelanceId(), title, short_title, description, short_description:description, ressource_link:link}),
       });
       if (!res.ok) { const d=await res.json(); throw new Error(d?.message||'Erreur '+res.status); }
       const r2 = await fetch(REFRESH_URL, {headers:{'Authorization':'Bearer '+getToken()}});
@@ -1284,8 +1344,10 @@
   ══════════════════════════════════════ */
   document.getElementById('al-btn-new-article')?.addEventListener('click', () => {
     if (formSection) {
-      formSection.style.display='block';
-      formSection.scrollIntoView({behavior:'smooth',block:'start'});
+      resetArticleForm();
+      formSection.style.display = 'block';
+      section.style.display = 'none';
+      formSection.scrollIntoView({ behavior:'smooth', block:'start' });
     }
   });
 
