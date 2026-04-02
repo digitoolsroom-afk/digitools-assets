@@ -1342,7 +1342,7 @@
   ══════════════════════════════════════ */
   document.getElementById('al-btn-new-article')?.addEventListener('click', () => {
     if (formSection) {
-      resetArticleForm();
+      if (typeof window.resetArticleForm === "function") window.resetArticleForm();
       formSection.style.display = 'block';
       section.style.display = 'none';
       formSection.scrollIntoView({ behavior:'smooth', block:'start' });
