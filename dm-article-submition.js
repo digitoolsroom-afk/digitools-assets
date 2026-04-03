@@ -634,7 +634,6 @@
 
 
 
-
 /* ============================================================
    dr-article-list.js
    ============================================================ */
@@ -795,7 +794,7 @@
         <div class="al-res-actions">
           <button class="al-btn-edit">✏️ Modifier →</button>
         </div>`;
-      item.querySelector('.al-res-actions .al-btn-edit').addEventListener('click', () => openEditResPopup(res));
+      item.querySelector('.al-btn-edit').addEventListener('click', () => openEditResPopup(res));
       resListEl.appendChild(item);
     });
   }
@@ -1137,21 +1136,24 @@
   ══════════════════════════════════════ */
   function openEditResPopup(res) {
     const popup = document.getElementById('al-edit-res-popup');
-    if (!popup) return;
-    document.getElementById('al-edit-res-popup-title').textContent = res.title || res.short_title || '—';
-    document.getElementById('al-res-edit-id').value          = res.id;
-    document.getElementById('al-res-edit-title').value       = res.title || '';
-    document.getElementById('al-res-edit-short-title').value = res.short_title || res.title_short || '';
-    document.getElementById('al-res-edit-description').value = res.description || res.description_short || '';
-    document.getElementById('al-res-edit-link').value        = res.lien_ressource || res.ressource_link || '';
-    document.getElementById('al-res-edit-url-img').value     = res.url_image || '';
+    if (!popup) { console.warn('[openEditResPopup] popup introuvable'); return; }
 
-    // img preview optionnel — les éléments peuvent ne pas exister si supprimés du HTML
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+    const txt = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+
+    txt('al-edit-res-popup-title', res.title || res.short_title || '—');
+    set('al-res-edit-id',          res.id || '');
+    set('al-res-edit-title',       res.title || '');
+    set('al-res-edit-short-title', res.short_title || res.title_short || '');
+    set('al-res-edit-description', res.description || res.description_short || '');
+    set('al-res-edit-link',        res.lien_ressource || res.ressource_link || '');
+    set('al-res-edit-url-img',     res.url_image || '');
+
     const rp  = document.getElementById('al-res-edit-img-preview');
     const rph = document.getElementById('al-res-edit-img-placeholder');
     if (rp && rph) {
-      if (res.url_image) { rp.src=res.url_image; rp.style.display='block'; rph.style.display='none'; }
-      else               { rp.style.display='none'; rph.style.display='flex'; }
+      if (res.url_image) { rp.src = res.url_image; rp.style.display = 'block'; rph.style.display = 'none'; }
+      else               { rp.style.display = 'none'; rph.style.display = 'flex'; }
     }
 
     popup.style.display = 'flex';
