@@ -815,7 +815,7 @@
         <div class="al-res-actions">
           <button class="al-btn-edit">✏️ Modifier →</button>
         </div>`;
-      item.querySelector('.al-btn-edit').addEventListener('click', () => openEditResPopup(res));
+      item.querySelector('.al-res-actions .al-btn-edit').addEventListener('click', () => openEditResPopup(res));
       resListEl.appendChild(item);
     });
   }
@@ -1256,7 +1256,6 @@
       ['al-new-res-title','al-new-res-short-title','al-new-res-description','al-new-res-link'].forEach(id=>{
         const el=document.getElementById(id); if(el) el.value='';
       });
-
       btn.textContent='✅ Ressource publiée !';
       setTimeout(() => {
         document.getElementById('al-new-res-standalone-popup').style.display='none';
