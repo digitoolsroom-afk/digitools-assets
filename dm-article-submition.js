@@ -34,7 +34,6 @@
   if (!section) return;
 
   function resetForm() {
-    // Reset tous les champs
     const titleEl = document.getElementById('af-title');
     const shortEl = document.getElementById('af-short-description');
     const corpEl  = document.getElementById('af-corp-text');
@@ -52,14 +51,12 @@
     duration = 60;
     if (durNum)    durNum.textContent = 60;
     if (durHidden) durHidden.value = 60;
-    // Reset image
     const prev = document.getElementById('af-img-preview');
     const ph   = document.getElementById('af-img-placeholder');
     const stat = document.getElementById('af-img-status');
     if (prev) { prev.src = ''; prev.style.display = 'none'; }
     if (ph)   ph.style.display = 'flex';
     if (stat) stat.textContent = '';
-    // Reset toggles
     if (toggleCourse) { toggleCourse.checked = true; syncCourseBody(); }
     if (toggleRes)    { toggleRes.checked    = true; syncResBody(); }
     const courseId = document.getElementById('af-course-id');
@@ -68,11 +65,9 @@
     if (resId)    resId.value = '';
     if (courseSelect) courseSelect.value = '';
     if (resSelect)    resSelect.value = '';
-    // Reset erreurs
     document.querySelectorAll('#section-article-form .af-field-error').forEach(e => e.style.display = 'none');
   }
 
-  // Exposer resetForm pour dr-article-list.js
   window.resetArticleForm = resetForm;
 
   function showForm() {
@@ -84,7 +79,6 @@
   }
   document.addEventListener('article-start-writing', showForm);
 
-  // MODIF 6 — bouton abandon
   document.addEventListener('click', e => {
     if (!e.target.closest('#af-abandon-btn')) return;
     section.style.display = 'none';
@@ -92,7 +86,7 @@
     const articles = auth?.freelance?.article || [];
     if (articles.length > 0) {
       const listSection = document.getElementById('section-article-list');
-      if (listSection) { listSection.style.display = 'flex'; }
+      if (listSection) { listSection.style.display = 'block'; } // ← CORRECTION : 'block' pas 'flex'
     } else {
       if (mktSection) mktSection.style.display = 'block';
       if (mktTopline) mktTopline.style.display  = 'block';
@@ -148,7 +142,6 @@
     });
   });
 
-  // Lien
   document.getElementById('af-rt-link-btn')?.addEventListener('click', () => {
     saveRange(); closeAllRtPopups();
     const p = document.getElementById('af-rt-link-popup');
@@ -165,7 +158,6 @@
   });
   document.getElementById('af-rt-link-cancel')?.addEventListener('click', closeAllRtPopups);
 
-  // Image inline
   document.getElementById('af-rt-img-btn')?.addEventListener('click', () => {
     saveRange(); closeAllRtPopups();
     const p = document.getElementById('af-rt-img-popup');
@@ -179,7 +171,6 @@
   });
   document.getElementById('af-rt-img-cancel')?.addEventListener('click', closeAllRtPopups);
 
-  // Vidéo
   document.getElementById('af-rt-video-btn')?.addEventListener('click', () => {
     saveRange(); closeAllRtPopups();
     const p = document.getElementById('af-rt-video-popup');
@@ -193,14 +184,12 @@
     const vm = url.match(/vimeo\.com\/(\d+)/);
     if (vm) embed = `https://player.vimeo.com/video/${vm[1]}`;
     if (!embed) { showToast('❌ URL YouTube ou Vimeo non reconnue.', 'error'); return; }
-    // insertHTML ne fonctionne pas bien avec les iframes — on insère le noeud directement
     rtEditor?.focus();
     const wrap = document.createElement('div');
     wrap.className = 'af-video-embed';
     const iframe = document.createElement('iframe');
     iframe.src = embed; iframe.allowFullscreen = true; iframe.frameBorder = '0';
     wrap.appendChild(iframe);
-    // Insérer après la sélection ou à la fin
     const sel = window.getSelection();
     if (sel && sel.rangeCount) {
       const range = sel.getRangeAt(0);
@@ -245,7 +234,6 @@
     } catch { if (statusEl) statusEl.textContent = '❌ Erreur réseau'; }
   }
 
-  // Image article
   const imgZone = document.getElementById('af-img-zone');
   const imgFile = document.getElementById('af-img-file');
   imgZone?.addEventListener('click', () => imgFile?.click());
@@ -264,20 +252,7 @@
     }
   });
 
-  // Image ressource
-  const resImgZone = document.getElementById('af-res-img-zone');
-  const resImgFile = document.getElementById('af-res-img-file');
-  resImgZone?.addEventListener('click', () => resImgFile?.click());
-  resImgFile?.addEventListener('change', () => {
-    if (resImgFile.files[0]) uploadImage(resImgFile.files[0],
-      document.getElementById('af-res-img-status'),
-      document.getElementById('af-res-img-preview'),
-      document.getElementById('af-res-img-placeholder'),
-      document.getElementById('af-res-url-img')
-    );
-  });
-
-  /* ── Toggle cours — ON par défaut ── */
+  /* ── Toggle cours ── */
   const toggleCourse   = document.getElementById('af-toggle-course');
   const courseBody     = document.getElementById('af-course-body');
   const courseSelect   = document.getElementById('af-course-select');
@@ -307,7 +282,7 @@
   fillCourses();
   courseSelect?.addEventListener('change', () => { courseIdInput.value = courseSelect.value; clearFieldError(courseSelect); });
 
-  /* ── Toggle ressource — ON par défaut ── */
+  /* ── Toggle ressource ── */
   const toggleRes   = document.getElementById('af-toggle-ressource');
   const resBody     = document.getElementById('af-ressource-body');
   const resSelect   = document.getElementById('af-ressource-select');
@@ -332,7 +307,7 @@
   fillRessources();
   resSelect?.addEventListener('change', () => { resIdInput.value = resSelect.value; clearFieldError(resSelect); });
 
-  /* ── Popup info ressources (En savoir +) ── */
+  /* ── Popup info ressources ── */
   const resInfoPopup  = document.getElementById('af-res-popup');
   document.getElementById('af-res-info-btn')  ?.addEventListener('click', () => { resInfoPopup.style.display = 'flex'; });
   document.getElementById('af-res-popup-close')?.addEventListener('click', () => { resInfoPopup.style.display = 'none'; });
@@ -347,7 +322,6 @@
   closeResPopupBtn?.addEventListener('click', () => { newResPopup.style.display = 'none'; });
   newResPopup?.addEventListener('click', e => { if (e.target === newResPopup) newResPopup.style.display = 'none'; });
 
-  // Echap ferme toutes les popups
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
       if (resInfoPopup) resInfoPopup.style.display = 'none';
@@ -356,103 +330,110 @@
     }
   });
 
-  // Popups exemples ressource (titre, titre court, description)
   document.querySelectorAll('.af-example-trigger').forEach(btn => {
     btn.addEventListener('click', () => {
-      const popupId = btn.dataset.popup;
-      const popup   = document.getElementById(popupId);
+      const popup = document.getElementById(btn.dataset.popup);
       if (popup) popup.style.display = 'flex';
     });
   });
   document.querySelectorAll('.af-ex-close').forEach(btn => {
-    btn.addEventListener('click', () => {
-      btn.closest('.af-ex-popup').style.display = 'none';
-    });
+    btn.addEventListener('click', () => { btn.closest('.af-ex-popup').style.display = 'none'; });
   });
   document.querySelectorAll('.af-ex-popup').forEach(popup => {
-    popup.addEventListener('click', e => {
-      if (e.target === popup) popup.style.display = 'none';
-    });
+    popup.addEventListener('click', e => { if (e.target === popup) popup.style.display = 'none'; });
   });
 
-  /* ── Publier ressource ── */
-  const publishResBtn = document.getElementById('af-publish-ressource-btn');
-  publishResBtn?.addEventListener('click', async () => {
+  /* ══════════════════════════════════════════
+     PUBLIER RESSOURCE
+     ← CORRECTION : btn récupéré dans le handler,
+       pas au chargement de la page
+  ══════════════════════════════════════════ */
+  document.addEventListener('click', async e => {
+    if (!e.target.closest('#af-publish-ressource-btn')) return;
+
+    const btn = document.getElementById('af-publish-ressource-btn');
+    if (!btn || btn.disabled) return;
+
     const titleEl      = document.getElementById('af-res-title');
     const shortTitleEl = document.getElementById('af-res-short-title');
     const linkEl       = document.getElementById('af-res-link');
-    const title       = titleEl?.value?.trim();
-    const short_title = shortTitleEl?.value?.trim();
-    const description = document.getElementById('af-res-description')?.value?.trim();
-    const short_desc  = document.getElementById('af-res-short-description')?.value?.trim();
-    const link        = linkEl?.value?.trim();
-    
-    // Validation inline
+    const title        = titleEl?.value?.trim();
+    const short_title  = shortTitleEl?.value?.trim();
+    const description  = document.getElementById('af-res-description')?.value?.trim();
+    const short_desc   = document.getElementById('af-res-short-description')?.value?.trim();
+    const link         = linkEl?.value?.trim();
+
     let hasErr = false;
     [titleEl, shortTitleEl, linkEl].forEach(el => clearFieldError(el));
-    if (!title)       { setFieldError(titleEl,      'Le titre est obligatoire.');                    hasErr = true; }
-    if (!short_title) { setFieldError(shortTitleEl, 'Le titre court est obligatoire.');              hasErr = true; }
-    if (!link)        { setFieldError(linkEl,        'Le lien de la ressource est obligatoire.');    hasErr = true; }
-    if (hasErr) {
-      [titleEl, shortTitleEl, linkEl].find(el => el?.style.borderColor)?.scrollIntoView({ behavior:'smooth', block:'center' });
-      return;
-    }
+    if (!title)       { setFieldError(titleEl,      'Le titre est obligatoire.');                 hasErr = true; }
+    if (!short_title) { setFieldError(shortTitleEl, 'Le titre court est obligatoire.');           hasErr = true; }
+    if (!link)        { setFieldError(linkEl,        'Le lien de la ressource est obligatoire.'); hasErr = true; }
+    if (hasErr) return;
 
-    publishResBtn.disabled = true; publishResBtn.textContent = '⏳ Publication…';
+    btn.disabled = true; btn.textContent = '⏳ Publication…';
+
     try {
       const res = await fetch(ADD_RES_URL, {
-        method:'POST',
-        headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+getToken() },
+        method: 'POST',
+        headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+getToken() },
         body: JSON.stringify({ freelance_id:getFreelanceId(), title, short_title, description, short_description:short_desc, ressource_link:link }),
       });
       if (!res.ok) throw new Error('Erreur ' + res.status);
 
       // Refresh auth
       const r2 = await fetch(REFRESH_URL, { headers:{ 'Authorization':'Bearer '+getToken() } });
-      if (r2.ok) { const d = await r2.json(); localStorage.setItem('auth', JSON.stringify(Object.assign({}, getAuth(), d))); }
+      if (r2.ok) {
+        const d = await r2.json();
+        localStorage.setItem('auth', JSON.stringify(Object.assign({}, getAuth(), d)));
+      }
 
+      // Recharger le select avec les nouvelles ressources
       fillRessources();
 
-      // Reset formulaire ressource
+      // Reset champs du formulaire ressource
       ['af-res-title','af-res-short-title','af-res-description','af-res-short-description','af-res-link']
         .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-      const rp  = document.getElementById('af-res-img-preview');
-      const rph = document.getElementById('af-res-img-placeholder');
-      if (rp)  { rp.src = ''; rp.style.display = 'none'; }
-      if (rph)  rph.style.display = 'flex';
-      document.getElementById('af-res-img-status').textContent = '';
 
-      publishResBtn.textContent = '✅ Ressource publiée !';
-      // Fermer la popup après succès
+      // Fermer la popup
       if (newResPopup) newResPopup.style.display = 'none';
-      // Afficher le message "Ressource ajoutée" + mettre en avant le select
+
+      // Afficher message succès dans le formulaire
       const addedMsg = document.getElementById('af-res-added-msg');
       if (addedMsg) addedMsg.style.display = 'flex';
-      const resSel = document.getElementById('af-ressource-select');
-      if (resSel) {
-        resSel.style.borderColor = '#22c55e';
-        resSel.style.boxShadow   = '0 0 0 3px rgba(34,197,94,.2)';
-        // Auto-sélectionner la dernière ressource ajoutée après refresh
-        setTimeout(() => {
-          const opts = resSel.options;
-          if (opts.length > 1) {
-            resSel.selectedIndex = opts.length - 1;
-            resIdInput.value = opts[opts.length - 1].value;
-            resSel.style.borderColor = '';
-            resSel.style.boxShadow   = '';
+
+      // Auto-sélectionner la dernière ressource dans le select
+      setTimeout(() => {
+        const opts = resSelect?.options;
+        if (opts && opts.length > 1) {
+          resSelect.selectedIndex = opts.length - 1;
+          if (resIdInput) resIdInput.value = opts[opts.length - 1].value;
+          // Highlight du select pour attirer l'attention
+          if (resSelect) {
+            resSelect.style.borderColor = '#22c55e';
+            resSelect.style.boxShadow   = '0 0 0 3px rgba(34,197,94,.2)';
+            setTimeout(() => {
+              resSelect.style.borderColor = '';
+              resSelect.style.boxShadow   = '';
+            }, 2000);
           }
-        }, 300);
-      }
-      setTimeout(() => { publishResBtn.disabled = false; publishResBtn.textContent = 'Publier la ressource'; }, 2000);
+        }
+      }, 300);
+
+      btn.textContent = '✅ Ressource publiée !';
+      setTimeout(() => {
+        btn.disabled    = false;
+        btn.textContent = '🚀 Publier la ressource';
+      }, 2000);
 
     } catch(e) {
-      publishResBtn.disabled = false; publishResBtn.textContent = 'Publier la ressource';
+      btn.disabled    = false;
+      btn.textContent = '🚀 Publier la ressource';
       showToast('❌ ' + e.message, 'error');
     }
   });
 
   /* ══════════════════════════════════════════
-     SYSTÈME DE VALIDATION INLINE
+     VALIDATION INLINE
   ══════════════════════════════════════════ */
   function setFieldError(el, msg) {
     if (!el) return;
@@ -499,7 +480,6 @@
     if (first) first.scrollIntoView({ behavior:'smooth', block:'center' });
   }
 
-  // Auto-clear au typing
   ['af-title','af-short-description','af-category-select','af-course-select'].forEach(id => {
     const el = document.getElementById(id);
     el?.addEventListener('input',  () => clearFieldError(el));
@@ -534,7 +514,7 @@
 
     let hasError = false;
 
-    if (!title)          { setFieldError(titleEl,     'Le titre de l\'article est obligatoire.'); hasError = true; }
+    if (!title)             { setFieldError(titleEl,     'Le titre de l\'article est obligatoire.'); hasError = true; }
     if (!short_description) { setFieldError(shortDescEl, 'L\'introduction est obligatoire.');        hasError = true; }
 
     if (!corp_clean) {
@@ -585,12 +565,13 @@
       document.dispatchEvent(new CustomEvent('article-published'));
       setTimeout(() => {
         section.style.display = 'none';
-        submitBtn.disabled = false;
+        submitBtn.disabled    = false;
         submitBtn.textContent = '🚀 Publier l\'article';
       }, 2200);
 
     } catch(e) {
-      submitBtn.disabled = false; submitBtn.textContent = '🚀 Publier l\'article';
+      submitBtn.disabled    = false;
+      submitBtn.textContent = '🚀 Publier l\'article';
       showToast('❌ ' + e.message, 'error');
     }
   });
@@ -614,7 +595,6 @@
   }
 
 })();
-
 
 
 
@@ -1166,10 +1146,13 @@
     document.getElementById('al-res-edit-link').value        = res.lien_ressource || res.ressource_link || '';
     document.getElementById('al-res-edit-url-img').value     = res.url_image || '';
 
+    // img preview optionnel — les éléments peuvent ne pas exister si supprimés du HTML
     const rp  = document.getElementById('al-res-edit-img-preview');
     const rph = document.getElementById('al-res-edit-img-placeholder');
-    if (res.url_image) { rp.src=res.url_image; rp.style.display='block'; rph.style.display='none'; }
-    else               { rp.style.display='none'; rph.style.display='flex'; }
+    if (rp && rph) {
+      if (res.url_image) { rp.src=res.url_image; rp.style.display='block'; rph.style.display='none'; }
+      else               { rp.style.display='none'; rph.style.display='flex'; }
+    }
 
     popup.style.display = 'flex';
   }
