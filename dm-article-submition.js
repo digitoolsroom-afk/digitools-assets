@@ -633,7 +633,6 @@
 
 
 
-
 /* ============================================================
    dr-article-list.js
    ============================================================ */
@@ -1147,7 +1146,6 @@
     set('al-res-edit-short-title', res.short_title || res.title_short || '');
     set('al-res-edit-description', res.description || res.description_short || '');
     set('al-res-edit-link',        res.lien_ressource || res.ressource_link || '');
-    set('al-res-edit-url-img',     res.url_image || '');
 
     const rp  = document.getElementById('al-res-edit-img-preview');
     const rph = document.getElementById('al-res-edit-img-placeholder');
@@ -1172,7 +1170,6 @@
     const short_title = document.getElementById('al-res-edit-short-title')?.value?.trim();
     const description = document.getElementById('al-res-edit-description')?.value?.trim();
     const link        = document.getElementById('al-res-edit-link')?.value?.trim();
-    const url_img     = document.getElementById('al-res-edit-url-img')?.value?.trim();
 
     if (!title||!short_title||!link) { alert('Titre, titre court et lien sont obligatoires.'); return; }
 
