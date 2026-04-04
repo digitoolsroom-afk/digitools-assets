@@ -1567,7 +1567,7 @@ bonusMods.forEach((m, bi) => section.appendChild(buildModuleEl(m, ch, bi + 1)));
         if (typeof window.openCourseEdit === 'function') window.openCourseEdit(item);
       });
       if (isRejected) {
-  const reopenBtn = card.querySelector('#btn-reopen-draft');
+  const reopenBtn = document.getElementById('btn-reopen-draft');
   reopenBtn?.addEventListener('click', async () => {
     const auth  = JSON.parse(localStorage.getItem('auth') || '{}');
     const token = auth?.token;
