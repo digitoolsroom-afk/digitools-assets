@@ -1559,13 +1559,42 @@ bonusMods.forEach((m, bi) => section.appendChild(buildModuleEl(m, ch, bi + 1)));
           </div>
         </div>
         <div class="pub-card-actions">
-          <button class="pub-btn-edit" data-course-id="${item.id}">✏️ Modifier</button>
+          ${status !== 'rejected' ? `<button class="pub-btn-edit" data-course-id="${item.id}">✏️ Modifier</button>` : ''}
         </div>
         ${isRejected && item.rejection_message ? `<button class="pub-btn-rejection" onclick="document.getElementById('popup-rejection-msg').classList.add('active');document.getElementById('popup-rejection-text').textContent='${esc(item.rejection_message).replace(/'/g, "\\'")}'" >💬 Voir le motif de refus</button>` : ''}
       `;
-      card.querySelector('.pub-btn-edit').addEventListener('click', () => {
+      card.querySelector('.pub-btn-edit')?.addEventListener('click', () => {
         if (typeof window.openCourseEdit === 'function') window.openCourseEdit(item);
       });
+      if (isRejected) {
+  const reopenBtn = card.querySelector('#btn-reopen-draft');
+  reopenBtn?.addEventListener('click', async () => {
+    const auth  = JSON.parse(localStorage.getItem('auth') || '{}');
+    const token = auth?.token;
+    reopenBtn.disabled = true;
+    reopenBtn.textContent = 'Chargement…';
+    try {
+      const res = await fetch('https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/reopen_course_draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify({ course_id: item.id }),
+      });
+      if (!res.ok) throw new Error('Erreur serveur');
+      const meRes = await fetch('https://xmot-l3ir-7kuj.p7.xano.io/api:uFugjjm6/user_full_data', {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      if (meRes.ok) {
+        const meData = await meRes.json();
+        localStorage.setItem('auth', JSON.stringify(Object.assign({}, auth, meData)));
+      }
+      window.location.reload();
+    } catch(e) {
+      alert('Erreur : ' + e.message);
+      reopenBtn.disabled = false;
+      reopenBtn.textContent = '✏️ Faire les modifications';
+    }
+  });
+}
       list.appendChild(card);
     });
   }
