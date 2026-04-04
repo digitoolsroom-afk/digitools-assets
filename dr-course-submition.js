@@ -1561,7 +1561,7 @@ bonusMods.forEach((m, bi) => section.appendChild(buildModuleEl(m, ch, bi + 1)));
         <div class="pub-card-actions">
           <button class="pub-btn-edit" data-course-id="${item.id}">✏️ Modifier</button>
         </div>
-        ${isRejected && item.rejection_message ? `<div class="pub-rejection-msg">💬 ${esc(item.rejection_message)}</div>` : ''}
+        ${isRejected && item.rejection_message ? `<button class="pub-btn-rejection" onclick="document.getElementById('popup-rejection-msg').classList.add('active');document.getElementById('popup-rejection-text').textContent='${esc(item.rejection_message).replace(/'/g, "\\'")}'" >💬 Voir le motif de refus</button>` : ''}
       `;
       card.querySelector('.pub-btn-edit').addEventListener('click', () => {
         if (typeof window.openCourseEdit === 'function') window.openCourseEdit(item);
