@@ -507,6 +507,43 @@ window.initCourseStep1 = function () {
 }; // fin initCourseStep1
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // ============================================================
 // dr-course-step2.js
 // ============================================================
@@ -639,7 +676,7 @@ window.initCourseBuilder = function () {
     ch0._id = 'chapter-0';
     ch0.modules = [
       makeModule({ title: 'Présentation de la formation', is_required: true }),
-      makeModule({ title: 'Présentation du formateur',    is_required: true }),
+      
       makeModule({ title: 'Plan de la formation',         is_required: true }),
     ];
     ch0.modules.forEach((m, i) => { m.module_order = i; });
@@ -737,9 +774,9 @@ window.initCourseBuilder = function () {
     modList.dataset.chapterId = ch._id;
 
     if (ch.isIntro) {
-      ch.modules.slice(0, 2).forEach((m, mi) => modList.appendChild(buildModuleEl(m, ch, mi)));
+      ch.modules.slice(0, 1).forEach((m, mi) => modList.appendChild(buildModuleEl(m, ch, mi)));
       modList.appendChild(buildBonusSection(ch));
-      if (ch.modules.length >= 3) {
+      if (ch.modules.length >= 2) {
         modList.appendChild(buildModuleEl(ch.modules[ch.modules.length - 1], ch, ch.modules.length - 1));
       }
     } else {
@@ -775,8 +812,8 @@ window.initCourseBuilder = function () {
     label.className = 'bonus-label';
     label.textContent = 'Modules bonus (optionnels)';
     section.appendChild(label);
-    const bonusMods = ch.modules.slice(2, ch.modules.length > 3 ? ch.modules.length - 1 : 2);
-    bonusMods.forEach((m, bi) => section.appendChild(buildModuleEl(m, ch, bi + 2)));
+    const bonusMods = ch.modules.slice(1, ch.modules.length > 2 ? ch.modules.length - 1 : 1);
+bonusMods.forEach((m, bi) => section.appendChild(buildModuleEl(m, ch, bi + 1)));
     const actRow = document.createElement('div');
     actRow.className = 'bonus-actions';
     const addBtn = document.createElement('button');
@@ -1329,6 +1366,37 @@ window.initCourseBuilder = function () {
 };
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // ============================================================
 // ROUTING
 // ============================================================
@@ -1418,7 +1486,7 @@ window.initCourseBuilder = function () {
         modules: rawModules
           .filter(m => m.chapter_temp_id === ch.chapter_temp_id)
           .sort((a, b) => a.order_index - b.order_index)
-          .map(m => ({
+          .map((m, idx, arr) => ({
             _id:            m.module_temp_id,
             module_temp_id: m.module_temp_id,
             title:          m.title           || '',
@@ -1428,7 +1496,7 @@ window.initCourseBuilder = function () {
             upload_status:  m.vimeo_video_uri ? 'uploaded' : 'idle',
             vimeo_uri:      m.vimeo_video_uri || null,
             file:           null,
-            is_required:    ch.order_index === 0 && m.order_index <= 2,
+            is_required:    ch.order_index === 0 && (idx === 0 || idx === arr.length - 1),
           })),
       }));
   }
@@ -1630,6 +1698,20 @@ document.addEventListener('DOMContentLoaded', function() {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // ============================================================
 // ÉDITION COURS PUBLIÉ — openCourseEdit()
 // À ajouter à la fin du grand script dr-course.js
@@ -1661,7 +1743,7 @@ document.addEventListener('DOMContentLoaded', function() {
   let _editPublicTarget = [];
   let _sessionId       = null; // généré à l'ouverture, partagé par toutes les demandes draft
 
-  const REQUIRED_TITLES = ['Présentation de la formation', 'Présentation du formateur', 'Plan de la formation'];
+  const REQUIRED_TITLES = ['Présentation de la formation', 'Plan de la formation'];
 
   // ============================================================
   // TOAST
