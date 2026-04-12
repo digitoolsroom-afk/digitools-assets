@@ -213,11 +213,8 @@
   var ENDPOINT_READ_ALL = 'https://xmot-l3ir-7kuj.p7.xano.io/api:ShnUEMUy/all_notification_is_readed';
 
   function getToken() {
-    try {
-      var auth = JSON.parse(localStorage.getItem('auth') || 'null');
-      return (auth && (auth.token || auth.authToken)) || localStorage.getItem('adminAuthToken') || null;
-    } catch(e) { return null; }
-  }
+  return localStorage.getItem('adminAuthToken');
+}
 
   var _notifications = [];
 
