@@ -5,6 +5,18 @@
 // ============================================================
 
 // ── Helper create_course ──
+function validateCoverRatio(file, callback) {
+  var url = URL.createObjectURL(file);
+  var img = new Image();
+  img.onload = function() {
+    URL.revokeObjectURL(url);
+    callback(img.width / img.height >= 1.5, img.width / img.height < 1.5
+      ? '❌ Image refusée : format portrait ou carré. Utilisez une image horizontale (16:9 recommandé).'
+      : '');
+  };
+  img.onerror = function() { URL.revokeObjectURL(url); callback(true, ''); };
+  img.src = url;
+}
 const COURSE_CREATE_ENDPOINT = 'https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/create_course';
 
 window.triggerCreateCourse = async function (payload, token, onSuccess, onError) {
@@ -201,8 +213,14 @@ window.initCourseStep1 = function () {
     if (this.files[0]) uploadFile(this.files[0], document.getElementById('formation-icon-status'), document.getElementById('formation-icon-url'));
   });
   document.getElementById('formation-cover-file')?.addEventListener('change', function () {
-    if (this.files[0]) uploadFile(this.files[0], document.getElementById('formation-cover-status'), document.getElementById('formation-cover-url'));
+  var file = this.files[0]; if (!file) return;
+  var statusEl = document.getElementById('formation-cover-status');
+  validateCoverRatio(file, function(valid, msg) {
+    if (!valid) { statusEl.textContent = msg; statusEl.style.color = '#ef4444'; document.getElementById('formation-cover-file').value = ''; return; }
+    statusEl.style.color = '';
+    uploadFile(file, statusEl, document.getElementById('formation-cover-url'));
   });
+});
 
   // ============================================================
   // COMPÉTENCES
@@ -2055,7 +2073,7 @@ document.addEventListener('DOMContentLoaded', function() {
     renderEditPublicTarget();
 
     initImageUpload('edit-icon-file',  'edit-icon-preview',  'edit-icon-url',  'edit-icon-status');
-    initImageUpload('edit-cover-file', 'edit-cover-preview', 'edit-cover-url', 'edit-cover-status');
+    initImageUploadWithRatioCheck('edit-cover-file', 'edit-cover-preview', 'edit-cover-url', 'edit-cover-status');
     initSkillsEdit();
     initFaqEdit();
     initPublicTargetEdit();
@@ -3062,6 +3080,37 @@ document.addEventListener('DOMContentLoaded', function() {
           if (statusEl) statusEl.textContent = '✅ Uploadé';
         } else { if (statusEl) statusEl.textContent = '❌ Erreur'; }
       } catch { if (statusEl) statusEl.textContent = '❌ Erreur serveur'; }
+    });
+  }
+
+  function initImageUploadWithRatioCheck(fileInputId, previewId, hiddenId, statusId) {
+    const fileInput = document.getElementById(fileInputId);
+    if (!fileInput || fileInput._editBound) return;
+    fileInput._editBound = true;
+    fileInput.addEventListener('change', function () {
+      const file = this.files[0]; if (!file) return;
+      const token    = getToken();
+      const statusEl = document.getElementById(statusId);
+      validateCoverRatio(file, function(valid, msg) {
+        if (!valid) {
+          if (statusEl) { statusEl.textContent = msg; statusEl.style.color = '#ef4444'; }
+          fileInput.value = '';
+          return;
+        }
+        if (statusEl) { statusEl.style.color = ''; statusEl.textContent = '⏳ Upload…'; }
+        const fd = new FormData(); fd.append('file', file);
+        fetch(UPLOAD_URL, { method:'POST', headers: token ? { Authorization:'Bearer '+token } : {}, body: fd })
+          .then(function(res) { return res.json(); })
+          .then(function(data) {
+            const url = data?.path ? 'https://xmot-l3ir-7kuj.p7.xano.io' + data.path : null;
+            if (url) {
+              const hidden = document.getElementById(hiddenId); if (hidden) hidden.value = url;
+              const prev   = document.getElementById(previewId); if (prev) { prev.src = url; prev.style.display = 'block'; }
+              if (statusEl) statusEl.textContent = '✅ Uploadé';
+            } else { if (statusEl) statusEl.textContent = '❌ Erreur'; }
+          })
+          .catch(function() { if (statusEl) statusEl.textContent = '❌ Erreur serveur'; });
+      });
     });
   }
 
