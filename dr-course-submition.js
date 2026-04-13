@@ -694,7 +694,6 @@ window.initCourseBuilder = function () {
     ch0._id = 'chapter-0';
     ch0.modules = [
       makeModule({ title: 'Présentation de la formation', is_required: true }),
-      
       makeModule({ title: 'Plan de la formation',         is_required: true }),
     ];
     ch0.modules.forEach((m, i) => { m.module_order = i; });
@@ -707,7 +706,6 @@ window.initCourseBuilder = function () {
   } else {
     initChapter0();
   }
-  // ✅ Restaurer ressources_html dans l'éditeur
   if (window._draftRessourcesHtml) {
     const editor = document.getElementById('ressources-html');
     const hidden = document.getElementById('ressources-html-hidden');
@@ -831,7 +829,7 @@ window.initCourseBuilder = function () {
     label.textContent = 'Modules bonus (optionnels)';
     section.appendChild(label);
     const bonusMods = ch.modules.slice(1, ch.modules.length > 2 ? ch.modules.length - 1 : 1);
-bonusMods.forEach((m, bi) => section.appendChild(buildModuleEl(m, ch, bi + 1)));
+    bonusMods.forEach((m, bi) => section.appendChild(buildModuleEl(m, ch, bi + 1)));
     const actRow = document.createElement('div');
     actRow.className = 'bonus-actions';
     const addBtn = document.createElement('button');
@@ -887,7 +885,6 @@ bonusMods.forEach((m, bi) => section.appendChild(buildModuleEl(m, ch, bi + 1)));
     titleDisplay.textContent = mod.title || 'Titre du module…';
     header.appendChild(titleDisplay);
 
-    // ✅ FIX 1 : badge "Obligatoire" toujours affiché, ET badge statut upload en plus
     if (mod.is_required) {
       const requiredPill = document.createElement('span');
       requiredPill.className = 'module-status-pill status-required';
@@ -944,6 +941,12 @@ bonusMods.forEach((m, bi) => section.appendChild(buildModuleEl(m, ch, bi + 1)));
     const durInput = document.createElement('input');
     durInput.type = 'text'; durInput.className = 'module-input dur-input';
     durInput.value = mod.duration; durInput.placeholder = '00:00';
+    // ✅ Si la vidéo est déjà uploadée, la durée est automatique — champ désactivé
+    if (mod.vimeo_uri) {
+      durInput.disabled = true;
+      durInput.style.background = '#f8fafc';
+      durInput.style.color = '#94a3b8';
+    }
     const durErrMsg = document.createElement('span');
     durErrMsg.className = 'dur-error-msg';
     durErrMsg.textContent = 'Format invalide — ex: 12:34';
@@ -989,8 +992,6 @@ bonusMods.forEach((m, bi) => section.appendChild(buildModuleEl(m, ch, bi + 1)));
     return item;
   }
 
-  // ✅ FIX 1 : setPill n'affiche plus "Obligatoire" — c'est géré séparément dans buildModuleEl
-  // Il affiche toujours le statut upload, même pour les modules obligatoires
   function setPill(pill, mod) {
     const map = {
       idle:      ['status-idle',      'En attente'],
@@ -1012,8 +1013,6 @@ bonusMods.forEach((m, bi) => section.appendChild(buildModuleEl(m, ch, bi + 1)));
     zone.appendChild(fileInput);
 
     if (mod.vimeo_uri) {
-      // ✅ FIX 2 : si le statut est "checking", on affiche un message d'attente
-      // au lieu d'essayer de charger le player Vimeo (qui n'est pas encore prêt)
       if (mod.upload_status === 'checking') {
         const waitMsg = document.createElement('div');
         waitMsg.style.cssText = 'padding:16px;text-align:center;font-size:.78rem;color:#7c3aed;font-weight:500;';
@@ -1081,21 +1080,20 @@ bonusMods.forEach((m, bi) => section.appendChild(buildModuleEl(m, ch, bi + 1)));
       if (!finalRes.ok) throw new Error('Erreur finalisation (' + finalRes.status + ')');
       progressFill.style.width = '85%';
       mod.vimeo_uri = vimeo_uri; mod.upload_status = 'checking'; setPill(pill, mod);
-      await pollVimeoStatus(vimeo_uri, mod.module_temp_id, statusText, progressFill, mod, ch, zone, pill);
+      const durSec = await pollVimeoStatus(vimeo_uri, mod.module_temp_id, statusText, progressFill, mod, ch, zone, pill);
       mod.upload_status = 'uploaded'; refreshChapterMeta(ch._id);
+      mod.duration = durSec ? Math.floor(durSec/60)+':'+String(durSec%60).padStart(2,'0') : mod.duration;
+      const _liveItem = document.querySelector('[data-module-id="'+mod._id+'"]');
+      const _durInput = _liveItem ? _liveItem.querySelector('.dur-input') : null;
+      if (_durInput) { _durInput.value = mod.duration; _durInput.disabled = true; _durInput.style.background = '#f8fafc'; _durInput.style.color = '#94a3b8'; }
 
-      // ✅ FIX référence périmée : après un render() pendant l'upload,
-      // zone et pill peuvent pointer vers des éléments hors DOM.
-      // On retrouve le bon élément via data-module-id.
       const liveItem = document.querySelector(`[data-module-id="${mod._id}"]`);
       const liveZone = liveItem ? liveItem.querySelector('.upload-zone') : zone;
       const livePills = liveItem ? liveItem.querySelectorAll('.module-status-pill') : [pill];
 
-      // Mettre à jour tous les badges de statut du module
       livePills.forEach(p => {
         if (!p.classList.contains('status-required')) setPill(p, mod);
       });
-      // Mettre aussi à jour le pill original au cas où
       if (!pill.classList.contains('status-required')) setPill(pill, mod);
 
       if (liveZone) {
@@ -1131,7 +1129,7 @@ bonusMods.forEach((m, bi) => section.appendChild(buildModuleEl(m, ch, bi + 1)));
           const data = await res.json();
           const isDone = (data.transcode==='complete' || data.transcode===true) && (data.playable===true || data.playable==='true');
           const isErr  = data.transcode==='error' || data.transcode===false;
-          if (isDone) { clearInterval(interval); resolve(); }
+          if (isDone) { clearInterval(interval); resolve(data.duration_seconds || 0); }
           else if (isErr) { clearInterval(interval); reject(new Error('Transcodage Vimeo échoué')); }
           else {
             const liveItem = document.querySelector(`[data-module-id="${mod._id}"]`);
@@ -1188,7 +1186,6 @@ bonusMods.forEach((m, bi) => section.appendChild(buildModuleEl(m, ch, bi + 1)));
   const SAVE_URL    = 'https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/save_module_chapter';
   const PUBLISH_URL = 'https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/published_module_chapter';
 
-  // ── RICH TEXT EDITOR — RESSOURCES ──
   (function initRessourcesEditor() {
     const editor   = document.getElementById('ressources-html');
     const hidden   = document.getElementById('ressources-html-hidden');
@@ -1214,7 +1211,6 @@ bonusMods.forEach((m, bi) => section.appendChild(buildModuleEl(m, ch, bi + 1)));
       });
     });
 
-    // ✅ Boutons de blocs H2/H3 pour les ressources
     toolbar?.querySelectorAll('.rt-btn[data-block]').forEach(btn => {
       btn.addEventListener('click', e => {
         e.preventDefault();
@@ -1346,7 +1342,6 @@ bonusMods.forEach((m, bi) => section.appendChild(buildModuleEl(m, ch, bi + 1)));
     try {
       const res=await fetch(PUBLISH_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify(buildPayload())});
       if(!res.ok) throw new Error('Erreur serveur ('+res.status+')');
-
       await new Promise(resolve => setTimeout(resolve, 800));
       try {
         const meRes=await fetch('https://xmot-l3ir-7kuj.p7.xano.io/api:uFugjjm6/user_full_data',{headers:{'Authorization':'Bearer '+token}});
@@ -1354,11 +1349,9 @@ bonusMods.forEach((m, bi) => section.appendChild(buildModuleEl(m, ch, bi + 1)));
           const meData=await meRes.json();
           const cur=JSON.parse(localStorage.getItem('auth')||'{}');
           localStorage.setItem('auth',JSON.stringify(Object.assign({},cur,meData)));
-
           ['step2-root','step2-title','step2-desc'].forEach(id => {
             document.getElementById(id)?.classList.remove('is-visible');
           });
-
           const publishedData  = meData?.freelance?.course_published         || [];
           window._publishedItems = meData?.freelance?.published_item_by_course || [];
           if (typeof window.renderPublishedSection === 'function') {
@@ -1370,9 +1363,7 @@ bonusMods.forEach((m, bi) => section.appendChild(buildModuleEl(m, ch, bi + 1)));
           }
         }
       } catch(e){console.warn('Refresh auth failed:',e);}
-
       document.getElementById('popup-publish-confirm')?.classList.add('active');
-
     } catch(err) { showToast('❌ Erreur publication : '+err.message,4000); }
     finally { btn.disabled=false; btn.textContent='🚀 Publier la formation'; }
   });
@@ -1774,27 +1765,24 @@ document.addEventListener('DOMContentLoaded', function() {
   const UPLOAD_URL         = 'https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/upload-proof';
   const VIMEO_UPLOAD_URL   = 'https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/vimeo_upload';
   const VIMEO_FINALIZE_URL = 'https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/vimeo_finalize';
+  const VIMEO_STATUS_URL   = 'https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/vimeo_status';
   const AUTH_URL           = 'https://xmot-l3ir-7kuj.p7.xano.io/api:uFugjjm6/user_full_data';
   const CHUNK_SIZE         = 5 * 1024 * 1024;
 
   const getAuth  = () => { try { return JSON.parse(localStorage.getItem('auth') || 'null'); } catch { return null; } };
   const getToken = () => { const a = getAuth(); return a?.authToken || a?.token || a?.jwt || null; };
 
-  // ── État global ──
   let _currentCourse   = null;
   let _currentChapters = [];
   let _currentModules  = [];
-  let _allRequests     = []; // toutes les demandes (draft + pending + approved + rejected)
+  let _allRequests     = [];
   let _editSkills       = [];
   let _editFaq          = [];
   let _editPublicTarget = [];
-  let _sessionId       = null; // généré à l'ouverture, partagé par toutes les demandes draft
+  let _sessionId       = null;
 
   const REQUIRED_TITLES = ['Présentation de la formation', 'Plan de la formation'];
 
-  // ============================================================
-  // TOAST
-  // ============================================================
   function showToastEdit(msg, duration) {
     duration = duration || 3000;
     let t = document.getElementById('edit-toast-el');
@@ -1817,9 +1805,6 @@ document.addEventListener('DOMContentLoaded', function() {
     if (el) el.value = val ?? '';
   }
 
-  // ============================================================
-  // MODALE GÉNÉRIQUE
-  // ============================================================
   let _confirmCallback = null;
 
   function showConfirmModal(title, msg, confirmLabel, confirmClass, onConfirm) {
@@ -1847,9 +1832,6 @@ document.addEventListener('DOMContentLoaded', function() {
     overlay.addEventListener('click', e => { if (e.target === overlay) { overlay.classList.remove('active'); _confirmCallback = null; } });
   }
 
-  // ============================================================
-  // REFRESH AUTH
-  // ============================================================
   async function refreshAuth() {
     const token = getToken();
     try {
@@ -1861,9 +1843,6 @@ document.addEventListener('DOMContentLoaded', function() {
     } catch(e) { console.warn('[edit] refreshAuth failed:', e); }
   }
 
-  // ============================================================
-  // POINT D'ENTRÉE
-  // ============================================================
   window.openCourseEdit = async function (item) {
     const status = item.status || 'pending_validation';
     if (status === 'pending_validation') {
@@ -1873,9 +1852,6 @@ document.addEventListener('DOMContentLoaded', function() {
     await loadEditSection(item.id);
   };
 
-  // ============================================================
-  // CHARGEMENT
-  // ============================================================
   async function loadEditSection(courseId) {
     const token = getToken();
     showToastEdit('⏳ Chargement…');
@@ -1891,15 +1867,10 @@ document.addEventListener('DOMContentLoaded', function() {
       _currentChapters = (courseData.chapters || []).sort((a, b) => a.order_index - b.order_index);
       _currentModules  = courseData.modules  || [];
 
-      // ✅ Charger les demandes depuis localStorage
       const authData = getAuth();
       const allChangeRequests = authData?.freelance?.course_change_request || [];
-      // Forcer la comparaison en String pour éviter les problèmes integer vs string
       _allRequests = allChangeRequests.filter(r => String(r.courses_id) === String(courseId));
-      console.log('[edit] _allRequests chargés:', _allRequests.length, 'pour course_id:', courseId);
 
-      // Réutiliser le session_id existant si des drafts existent déjà
-      // sinon en générer un nouveau
       const existingDraft = _allRequests.find(r => r.status === 'draft');
       _sessionId = existingDraft?.session_id || ('session-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8));
 
@@ -1924,11 +1895,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   }
 
-  // ============================================================
-  // BARRE DE SOUMISSION — affichée quand des drafts existent
-  // ============================================================
   function updateSubmitBar() {
-    // ✅ Compter TOUS les drafts du cours (toutes sessions confondues)
     const draftCount = _allRequests.filter(r => r.status === 'draft').length;
     let bar = document.getElementById('edit-submit-bar');
 
@@ -1966,18 +1933,16 @@ document.addEventListener('DOMContentLoaded', function() {
       const res = await fetch(SUBMIT_SESSION_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-        // ✅ On envoie course_id pour soumettre TOUS les drafts du cours
         body: JSON.stringify({ session_id: _sessionId, course_id: _currentCourse.id }),
       });
       if (!res.ok) throw new Error('Erreur soumission');
 
-      // ✅ Passer TOUS les drafts du cours en pending (pas juste la session courante)
       _allRequests.forEach(r => { if (r.status === 'draft') r.status = 'pending'; });
 
       showToastEdit('✅ Demandes soumises ! Elles seront traitées prochainement.', 4000);
       fillDemandesTab();
       updateSubmitBar();
-      fillStructureTab(); // Re-render pour afficher les badges pending
+      fillStructureTab();
 
     } catch(e) {
       showToastEdit('❌ Erreur soumission : ' + e.message, 5000);
@@ -1985,12 +1950,8 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   }
 
-  // ============================================================
-  // HELPER : envoyer une demande en draft
-  // ============================================================
   async function sendRequest(payload) {
     const token = getToken();
-    // ✅ Stringifier le payload en JSON avant envoi — Xano attend une string JSON pour ce champ
     const payloadToSend = Object.assign({}, payload);
     if (payloadToSend.payload && typeof payloadToSend.payload === 'object') {
       payloadToSend.payload = JSON.stringify(payloadToSend.payload);
@@ -2004,7 +1965,6 @@ document.addEventListener('DOMContentLoaded', function() {
     if (!res.ok) throw new Error('Erreur envoi demande (' + res.status + ')');
     const data = await res.json();
 
-    // ✅ Refresh localStorage puis recharger _allRequests depuis la source de vérité
     await refreshAuth();
     const authData = getAuth();
     const courseId = _currentCourse.id;
@@ -2014,9 +1974,33 @@ document.addEventListener('DOMContentLoaded', function() {
     return data;
   }
 
-  // ============================================================
-  // ONGLET INFOS
-  // ============================================================
+  // ── Helper : poll vimeo status et retourner duration_seconds ──
+  async function pollForDuration(vimeoUri, token, statusEl) {
+    const POLL_INTERVAL = 4000;
+    const MAX_ATTEMPTS  = 60;
+    let attempts = 0;
+    return new Promise((resolve) => {
+      const interval = setInterval(async () => {
+        attempts++;
+        try {
+          const res = await fetch(VIMEO_STATUS_URL + '?vimeo_uri=' + encodeURIComponent(vimeoUri), {
+            method: 'GET', headers: { 'Authorization': 'Bearer ' + token }
+          });
+          if (!res.ok) { clearInterval(interval); resolve(0); return; }
+          const data = await res.json();
+          const isDone = (data.transcode === 'complete' || data.transcode === true) && (data.playable === true || data.playable === 'true');
+          if (isDone) {
+            clearInterval(interval);
+            resolve(data.duration_seconds || 0);
+          } else if (statusEl) {
+            statusEl.textContent = 'Transcodage… ' + Math.min(85 + attempts * 2, 99) + '%';
+          }
+        } catch { clearInterval(interval); resolve(0); }
+        if (attempts >= MAX_ATTEMPTS) { clearInterval(interval); resolve(0); }
+      }, POLL_INTERVAL);
+    });
+  }
+
   function fillInfosTab() {
     const c = _currentCourse;
     if (!c) return;
@@ -2031,7 +2015,6 @@ document.addEventListener('DOMContentLoaded', function() {
     setValue('edit-theme',         c.theme             || '');
     setValue('edit-title',         c.title             || '');
     setValue('edit-desc-short',    c.description_short || '');
-    // ✅ Description longue en rich text — injecter dans le contenteditable
     const descLongEl = document.getElementById('edit-desc-long');
     if (descLongEl) {
       descLongEl.innerHTML = c.description_long || '';
@@ -2053,7 +2036,6 @@ document.addEventListener('DOMContentLoaded', function() {
     if (coverPreview && c.cover_url) { coverPreview.src = c.cover_url; coverPreview.style.display = 'block'; }
     setValue('edit-cover-url', c.cover_url || '');
 
-    // ✅ Lire depuis les tables liées si dispo, sinon fallback sur les champs directs
     const faqSource    = Array.isArray(c._course_faq_of_courses)          && c._course_faq_of_courses.length
       ? c._course_faq_of_courses.map(f => ({ question: f.question, answer: f.response || f.answer || '' }))
       : (Array.isArray(c.faq) ? c.faq : []);
@@ -2080,9 +2062,6 @@ document.addEventListener('DOMContentLoaded', function() {
     initDescLongEditor();
   }
 
-  // ============================================================
-  // ONGLET STRUCTURE
-  // ============================================================
   function hasPendingRequests() {
     return _allRequests.some(r => r.status === 'pending');
   }
@@ -2094,11 +2073,6 @@ document.addEventListener('DOMContentLoaded', function() {
       (Array.isArray(changeTypes) ? changeTypes.includes(r.change_type) : r.change_type === changeTypes) &&
       (r.status === 'draft' || r.status === 'pending')
     );
-    if (!result && _allRequests.length > 0) {
-      // Debug : afficher pourquoi ça ne match pas
-      console.log('[getRequestFor] cherche targetId:', targetId, '(type:', typeof targetId, ') targetType:', targetType);
-      console.log('[getRequestFor] _allRequests:', _allRequests.map(r => ({target_id: r.target_id, type: typeof r.target_id, target_type: r.target_type, change_type: r.change_type, status: r.status})));
-    }
     return result;
   }
 
@@ -2107,7 +2081,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const hidden = document.getElementById('edit-ressources-html-hidden');
     if (!editor || editor._resBound) return;
     editor._resBound = true;
-    // Pré-remplir avec les ressources existantes
     if (_currentCourse?.ressources_html) {
       editor.innerHTML = _currentCourse.ressources_html;
       if (hidden) hidden.value = _currentCourse.ressources_html;
@@ -2133,8 +2106,6 @@ document.addEventListener('DOMContentLoaded', function() {
         if (hidden) hidden.value = editor.innerHTML;
       });
     });
-    // ✅ Ressources sauvegardées via le bouton principal "Enregistrer les modifications"
-    // Pas de bouton séparé nécessaire
   }
 
   function fillStructureTab() {
@@ -2142,9 +2113,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (!list) return;
     list.innerHTML = '';
 
-    // Bloquer seulement si des demandes sont en pending (soumises mais pas encore validées)
     if (hasPendingRequests()) {
-      // Afficher le message de verrouillage
       const lockDiv = document.createElement('div');
       lockDiv.style.cssText = 'background:#fff7ed;border:1.5px solid #fed7aa;border-radius:14px;padding:28px 24px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:12px;margin-bottom:16px;';
       lockDiv.innerHTML = `
@@ -2157,7 +2126,6 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>`;
       list.appendChild(lockDiv);
 
-      // ✅ Afficher quand même les demandes draft en lecture seule
       const drafts = _allRequests.filter(r => r.status === 'draft');
       if (drafts.length > 0) {
         const draftTitle = document.createElement('div');
@@ -2210,7 +2178,6 @@ document.addEventListener('DOMContentLoaded', function() {
       titleInput.placeholder = 'Titre du chapitre…';
       header.appendChild(titleInput);
 
-      // Badge demande en cours
       if (chRequest) {
         const b = document.createElement('span');
         b.className   = 'edit-request-badge ' + (chRequest.status === 'draft' ? 'add' : 'delete');
@@ -2238,7 +2205,6 @@ document.addEventListener('DOMContentLoaded', function() {
       const modList = document.createElement('div'); modList.className = 'edit-modules-list';
 
       if (ci === 0) {
-        // Chapitre 0 : structure fixe
         const mod0    = modules.find(m => m.order_index === 0);
         const mod1    = modules.find(m => m.order_index === 1);
         const lastMod = modules.find(m => m.title === 'Plan de la formation') || modules[modules.length - 1];
@@ -2267,7 +2233,6 @@ document.addEventListener('DOMContentLoaded', function() {
       list.appendChild(card);
     });
 
-    // Afficher les chapitres en attente d'ajout (draft ou pending)
     const pendingChapters = _allRequests.filter(r =>
       r.change_type === 'add_chapter' &&
       (r.status === 'draft' || r.status === 'pending')
@@ -2296,7 +2261,6 @@ document.addEventListener('DOMContentLoaded', function() {
       header.appendChild(reqBadge);
       card.appendChild(header);
 
-      // Si draft → permettre d\'ajouter des modules à ce chapitre
       if (req.status === 'draft') {
         const modList = document.createElement('div'); modList.className = 'edit-modules-list';
 
@@ -2330,7 +2294,6 @@ document.addEventListener('DOMContentLoaded', function() {
       list.appendChild(card);
     });
 
-    // Bouton ajouter un chapitre
     const addChBtn = document.createElement('button'); addChBtn.className = 'edit-btn-add-module';
     addChBtn.style.cssText = 'margin-top:8px;border-color:#6b7280;color:#374151;';
     addChBtn.textContent = '+ Demander l\'ajout d\'un chapitre';
@@ -2380,7 +2343,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const actions = document.createElement('div'); actions.className = 'edit-module-actions';
     if (!isPendingAdd) {
-      // ✅ Bouton voir la vidéo (si le module a une vidéo)
       if (mod.vimeo_video_uri) {
         const viewBtn = document.createElement('button'); viewBtn.className = 'edit-btn-replace-video';
         viewBtn.textContent = '👁️ Voir la vidéo';
@@ -2396,7 +2358,6 @@ document.addEventListener('DOMContentLoaded', function() {
         actions.appendChild(saveBtn);
       }
 
-      // Remplacement vidéo : disponible si pas déjà une demande replace_video
       const hasReplaceReq = modRequest && modRequest.change_type === 'replace_video';
       if (!hasReplaceReq) {
         const replBtn = document.createElement('button'); replBtn.className = 'edit-btn-replace-video';
@@ -2405,7 +2366,6 @@ document.addEventListener('DOMContentLoaded', function() {
         actions.appendChild(replBtn);
       }
 
-      // Suppression : uniquement non obligatoires et pas déjà une demande delete
       const hasDeleteReq = modRequest && modRequest.change_type === 'delete_module';
       if (!isRequired && !hasDeleteReq) {
         const delBtn = document.createElement('button'); delBtn.className = 'edit-btn-delete-module';
@@ -2418,9 +2378,6 @@ document.addEventListener('DOMContentLoaded', function() {
     return item;
   }
 
-  // ============================================================
-  // ONGLET DEMANDES
-  // ============================================================
   function fillDemandesTab() {
     const list = document.getElementById('edit-requests-list');
     if (!list) return;
@@ -2444,18 +2401,16 @@ document.addEventListener('DOMContentLoaded', function() {
     };
     const statusLabels = { draft:'Non soumis', pending:'En attente', approved:'Approuvé', rejected:'Refusé' };
 
-    // Grouper : draft en haut, puis pending, puis autres
     const sorted = [...relevant].sort((a, b) => {
       const order = { draft: 0, pending: 1, approved: 2, rejected: 3 };
       return (order[a.status] ?? 9) - (order[b.status] ?? 9) || b.requested_at - a.requested_at;
     });
 
-    // Bandeau si des drafts existent
-    const draftCount = relevant.filter(r => r.status === 'draft').length; // tous drafts du cours
+    const draftCount = relevant.filter(r => r.status === 'draft').length;
     if (draftCount > 0) {
       const banner = document.createElement('div');
       banner.style.cssText = 'background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:12px;padding:14px 18px;font-size:.82rem;color:#1d4ed8;margin-bottom:12px;line-height:1.5;';
-      banner.innerHTML = `📋 <strong>${draftCount} demande${draftCount > 1 ? 's' : ''} non soumise${draftCount > 1 ? 's'  : ''}</strong> — Ces demandes seront envoyées à la validation quand vous cliquerez sur <strong>"Soumettre toutes mes demandes"</strong> en bas de page.`;
+      banner.innerHTML = `📋 <strong>${draftCount} demande${draftCount > 1 ? 's' : ''} non soumise${draftCount > 1 ? 's' : ''}</strong> — Ces demandes seront envoyées à la validation quand vous cliquerez sur <strong>"Soumettre toutes mes demandes"</strong> en bas de page.`;
       list.appendChild(banner);
     }
 
@@ -2468,7 +2423,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
       const targetEl = document.createElement('div'); targetEl.className = 'edit-request-target';
       try {
-        // ✅ Le payload depuis Xano est une string JSON — parser dans tous les cas
         let p = {};
         if (req.payload) {
           p = typeof req.payload === 'string' ? JSON.parse(req.payload) : req.payload;
@@ -2506,9 +2460,6 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
-  // ============================================================
-  // TABS
-  // ============================================================
   function initEditTabs() {
     document.querySelectorAll('.edit-tab').forEach(tab => {
       tab.onclick = function () {
@@ -2521,9 +2472,6 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.edit-tab')[0]?.click();
   }
 
-  // ============================================================
-  // BOUTON RETOUR
-  // ============================================================
   function initEditBackBtn() {
     const btn = document.getElementById('edit-back-btn');
     if (!btn) return;
@@ -2533,9 +2481,6 @@ document.addEventListener('DOMContentLoaded', function() {
     };
   }
 
-  // ============================================================
-  // SOUMISSION INFOS GÉNÉRALES
-  // ============================================================
   function initInfosForm(courseId) {
     const btn = document.getElementById('edit-submit-infos');
     if (!btn) return;
@@ -2602,9 +2547,6 @@ document.addEventListener('DOMContentLoaded', function() {
     };
   }
 
-  // ============================================================
-  // ACTIONS STRUCTURE — titres directs
-  // ============================================================
   async function saveChapterTitle(chapterId, newTitle) {
     if (!newTitle.trim()) return;
     const token = getToken();
@@ -2633,9 +2575,6 @@ document.addEventListener('DOMContentLoaded', function() {
     } catch { showToastEdit('❌ Erreur mise à jour titre'); }
   }
 
-  // ============================================================
-  // ACTIONS STRUCTURE — demandes (draft)
-  // ============================================================
   function requestDeleteChapter(ch) {
     showConfirmModal(
       `Supprimer le chapitre ?`,
@@ -2668,7 +2607,6 @@ document.addEventListener('DOMContentLoaded', function() {
     );
   }
 
-  // ── Modale ajout module ──
   function openAddModuleModal(ch) {
     const overlay = document.getElementById('edit-add-module-modal');
     if (!overlay) return;
@@ -2677,14 +2615,16 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('edit-add-module-duration').value = '';
     document.getElementById('edit-add-module-vimeo-uri').value = '';
     document.getElementById('edit-add-module-status').textContent = '';
-    document.getElementById('edit-add-module-filename').textContent = 'Aucun fichier sélectionné'; // ✅ Reset nom fichier
+    document.getElementById('edit-add-module-filename').textContent = 'Aucun fichier sélectionné';
     document.getElementById('edit-add-module-progress-bar').style.display = 'none';
     document.getElementById('edit-add-module-progress-fill').style.width = '0%';
     document.getElementById('edit-add-module-progress-fill').classList.remove('error');
-    // ✅ Reset le file input pour permettre de choisir un nouveau fichier
     const fileInput = document.getElementById('edit-add-module-video-file');
     if (fileInput) fileInput.value = '';
     document.getElementById('edit-add-module-confirm').disabled = true;
+    // Reset champ durée : réactiver au cas où
+    const durInput = document.getElementById('edit-add-module-duration');
+    if (durInput) { durInput.disabled = false; durInput.style.background = ''; durInput.style.color = ''; }
     overlay.classList.add('active');
     overlay._ch = ch;
   }
@@ -2700,11 +2640,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const uriHidden = document.getElementById('edit-add-module-vimeo-uri');
 
     document.getElementById('edit-add-module-cancel')?.addEventListener('click', () => overlay.classList.remove('active'));
-
-    // Bouton choisir vidéo
     document.getElementById('edit-add-module-video-btn')?.addEventListener('click', () => fileInput?.click());
 
-    // Upload vidéo TUS
     if (fileInput && !fileInput._modBound) {
       fileInput._modBound = true;
       fileInput.addEventListener('change', async function () {
@@ -2749,6 +2686,19 @@ document.addEventListener('DOMContentLoaded', function() {
             body: JSON.stringify({ vimeo_uri, module_temp_id: moduleTempId }),
           });
 
+          // ✅ MODIF 1 : récupérer la durée depuis Vimeo et remplir automatiquement
+          statusEl.textContent = 'Récupération de la durée…';
+          const durSec = await pollForDuration(vimeo_uri, token, statusEl);
+          const durInput = document.getElementById('edit-add-module-duration');
+          if (durSec && durInput) {
+            const mm = Math.floor(durSec / 60);
+            const ss = String(durSec % 60).padStart(2, '0');
+            durInput.value = mm + ':' + ss;
+            durInput.disabled = true;
+            durInput.style.background = '#f8fafc';
+            durInput.style.color = '#94a3b8';
+          }
+
           uriHidden.value = vimeo_uri;
           progFill.style.width = '100%';
           statusEl.textContent = '✅ Vidéo uploadée avec succès !';
@@ -2769,12 +2719,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
       if (!title)    { showToastEdit('❌ Entrez un titre pour le module'); return; }
       if (!vimeoUri) { showToastEdit('❌ Uploadez la vidéo avant de soumettre'); return; }
+      if (!durRaw)   { showToastEdit('❌ La durée n\'a pas pu être récupérée, réessayez'); return; }
 
-      // ✅ Durée obligatoire et format MM:SS strict
-      if (!durRaw) { showToastEdit('❌ Entrez la durée de la vidéo (ex: 12:34)'); return; }
-      if (!/^\d{1,3}:\d{2}$/.test(durRaw)) { showToastEdit('❌ Format durée invalide — utilisez MM:SS (ex: 12:34)'); return; }
-
-      // Convertir durée MM:SS en secondes
       const [m, s] = durRaw.split(':').map(Number);
       const durationSec = m * 60 + s;
 
@@ -2803,7 +2749,6 @@ document.addEventListener('DOMContentLoaded', function() {
     overlay.addEventListener('click', e => { if (e.target === overlay) overlay.classList.remove('active'); });
   }
 
-  // ── Modale ajout chapitre ──
   function openAddChapterModal() {
     const overlay = document.getElementById('edit-add-chapter-modal');
     if (!overlay) return;
@@ -2845,9 +2790,6 @@ document.addEventListener('DOMContentLoaded', function() {
     overlay.addEventListener('click', e => { if (e.target === overlay) overlay.classList.remove('active'); });
   }
 
-  // ============================================================
-  // PREVIEW VIDÉO
-  // ============================================================
   function openVideoPreviewPopup(vimeoUri, title) {
     const overlay = document.getElementById('edit-video-preview-modal');
     if (!overlay) return;
@@ -2858,13 +2800,11 @@ document.addEventListener('DOMContentLoaded', function() {
     overlay.classList.add('active');
   }
 
-  // ============================================================
-  // REMPLACEMENT VIDÉO
-  // ============================================================
   function openReplaceVideoPopup(moduleId, moduleTitle) {
     document.getElementById('replace-video-module-id').value    = moduleId;
     document.getElementById('replace-video-module-title').value = moduleTitle || '';
     document.getElementById('replace-video-new-uri').value     = '';
+    document.getElementById('replace-video-duration-seconds').value = '0'; // ✅ reset durée
     document.getElementById('replace-status-text').textContent = '';
     document.getElementById('replace-progress-bar').style.display = 'none';
     document.getElementById('replace-video-submit-btn').disabled = true;
@@ -2904,19 +2844,38 @@ document.addEventListener('DOMContentLoaded', function() {
 
         await fetch(VIMEO_FINALIZE_URL, { method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+token}, body: JSON.stringify({ vimeo_uri, module_temp_id: 'replace-'+moduleId }) });
 
+        // ✅ MODIF 2 : récupérer la durée depuis Vimeo et la stocker dans un champ caché
+        statusEl.textContent = 'Récupération de la durée…';
+        const durSec = await pollForDuration(vimeo_uri, token, statusEl);
+        const durHidden = document.getElementById('replace-video-duration-seconds');
+        if (durHidden) durHidden.value = durSec || 0;
+
         document.getElementById('replace-video-new-uri').value = vimeo_uri;
-        progFill.style.width = '100%'; statusEl.textContent = '✅ Vidéo prête — cliquez sur "Soumettre"'; submitBtn.disabled = false;
+        progFill.style.width = '100%';
+        statusEl.textContent = '✅ Vidéo prête — cliquez sur "Soumettre"';
+        submitBtn.disabled = false;
+
       } catch(e) { statusEl.textContent = '❌ ' + e.message; progFill.classList.add('error'); }
     });
 
     submitBtn.addEventListener('click', async function () {
-      const moduleId = document.getElementById('replace-video-module-id').value;
-      const newUri   = document.getElementById('replace-video-new-uri').value;
+      const moduleId  = document.getElementById('replace-video-module-id').value;
+      const newUri    = document.getElementById('replace-video-new-uri').value;
+      const durSec    = parseInt(document.getElementById('replace-video-duration-seconds')?.value) || 0;
       if (!newUri) return;
       submitBtn.disabled = true; submitBtn.textContent = 'Envoi…';
       try {
         const moduleTitle = document.getElementById('replace-video-module-title')?.value || '';
-        await sendRequest({ change_type: 'replace_video', target_id: String(moduleId), target_type: 'module', payload: { new_vimeo_uri: newUri, module_title: moduleTitle } });
+        await sendRequest({
+          change_type: 'replace_video',
+          target_id:   String(moduleId),
+          target_type: 'module',
+          payload: {
+            new_vimeo_uri:    newUri,
+            module_title:     moduleTitle,
+            duration_seconds: durSec,  // ✅ durée de la nouvelle vidéo envoyée dans le payload
+          }
+        });
         document.getElementById('popup-replace-video')?.classList.remove('active');
         fillStructureTab(); fillDemandesTab(); updateSubmitBar();
         showToastEdit('📋 Demande ajoutée — pensez à soumettre !');
@@ -2925,9 +2884,6 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
-  // ============================================================
-  // SKILLS
-  // ============================================================
   function renderEditSkills() {
     const list   = document.getElementById('edit-skills-list');
     const hidden = document.getElementById('edit-skills-hidden');
@@ -2959,9 +2915,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   }
 
-  // ============================================================
-  // PUBLIC TARGET
-  // ============================================================
   function renderEditPublicTarget() {
     const list   = document.getElementById('edit-public-target-list');
     const hidden = document.getElementById('edit-public-target-hidden');
@@ -2993,9 +2946,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   }
 
-  // ============================================================
-  // FAQ
-  // ============================================================
   function renderEditFaq() {
     const list   = document.getElementById('edit-faq-list');
     const hidden = document.getElementById('edit-faq-hidden');
@@ -3030,9 +2980,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   }
 
-  // ============================================================
-  // RICH TEXT DESC LONGUE
-  // ============================================================
   function initDescLongEditor() {
     const editor = document.getElementById('edit-desc-long');
     const hidden = document.getElementById('edit-desc-long-hidden');
@@ -3057,9 +3004,6 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
-  // ============================================================
-  // UPLOAD IMAGES
-  // ============================================================
   function initImageUpload(fileInputId, previewId, hiddenId, statusId) {
     const fileInput = document.getElementById(fileInputId);
     if (!fileInput || fileInput._editBound) return;
@@ -3114,9 +3058,6 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
-  // ============================================================
-  // INIT MODALES AU CHARGEMENT
-  // ============================================================
   document.addEventListener('DOMContentLoaded', function () {
     initAddModuleModal();
     initAddChapterModal();
@@ -3124,7 +3065,6 @@ document.addEventListener('DOMContentLoaded', function() {
     ['popup-pending-validation','popup-changes-pending','popup-replace-video','popup-request-sent','edit-video-preview-modal'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.addEventListener('click', e => { if (e.target === el) {
-        // Stopper la vidéo en vidant le src avant de fermer
         const iframe = el.querySelector('iframe');
         if (iframe) { const src = iframe.src; iframe.src = ''; setTimeout(() => iframe.src = src, 100); }
         el.classList.remove('active');
