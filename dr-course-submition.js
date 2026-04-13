@@ -943,7 +943,7 @@ window.initCourseBuilder = function () {
 durInput.value = mod.duration; durInput.placeholder = 'Auto (Vimeo)';
 durInput.disabled = true;
 durInput.style.background = '#EFF6FF';
-durInput.style.color = '#BFDBFE';
+durInput.style.color = '#2663EB';
     const durErrMsg = document.createElement('span');
     durErrMsg.className = 'dur-error-msg';
     durErrMsg.textContent = 'Format invalide — ex: 12:34';
