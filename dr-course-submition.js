@@ -940,13 +940,10 @@ window.initCourseBuilder = function () {
     durLabel.className = 'module-label'; durLabel.textContent = 'Durée de la vidéo';
     const durInput = document.createElement('input');
     durInput.type = 'text'; durInput.className = 'module-input dur-input';
-    durInput.value = mod.duration; durInput.placeholder = '00:00';
-    // ✅ Si la vidéo est déjà uploadée, la durée est automatique — champ désactivé
-    if (mod.vimeo_uri) {
-      durInput.disabled = true;
-      durInput.style.background = '#f8fafc';
-      durInput.style.color = '#94a3b8';
-    }
+durInput.value = mod.duration; durInput.placeholder = 'Auto (Vimeo)';
+durInput.disabled = true;
+durInput.style.background = '#EFF6FF';
+durInput.style.color = '#BFDBFE';
     const durErrMsg = document.createElement('span');
     durErrMsg.className = 'dur-error-msg';
     durErrMsg.textContent = 'Format invalide — ex: 12:34';
