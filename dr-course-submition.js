@@ -1749,7 +1749,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // ============================================================
 // ÉDITION COURS PUBLIÉ — openCourseEdit()
-// À ajouter à la fin du grand script dr-course.js
 // ============================================================
 
 (function () {
@@ -1773,10 +1772,13 @@ document.addEventListener('DOMContentLoaded', function() {
   let _currentChapters = [];
   let _currentModules  = [];
   let _allRequests     = [];
-  let _editSkills       = [];
-  let _editFaq          = [];
+  let _editSkills      = [];
+  let _editFaq         = [];
   let _editPublicTarget = [];
   let _sessionId       = null;
+
+  // ── Variables pour l'éditeur ressources (popup lien) ──
+  let _resSavedRange = null;
 
   const REQUIRED_TITLES = ['Présentation de la formation', 'Plan de la formation'];
 
@@ -1863,6 +1865,11 @@ document.addEventListener('DOMContentLoaded', function() {
       _currentCourse   = courseData.course;
       _currentChapters = (courseData.chapters || []).sort((a, b) => a.order_index - b.order_index);
       _currentModules  = courseData.modules  || [];
+
+      // ✅ CORRECTION 1 — FAQ/Skills/Target depuis l'API, filtrés sur status published
+      _editFaq         = (courseData.faq     || []).filter(f => f.status !== 'deleted').map(f => ({ question: f.question, answer: f.response || f.answer || '' }));
+      _editSkills      = (courseData.skills  || []).filter(s => s.status !== 'deleted').map(s => s.content);
+      _editPublicTarget = (courseData.target || []).filter(p => p.status !== 'deleted').map(p => p.content);
 
       const authData = getAuth();
       const allChangeRequests = authData?.freelance?.course_change_request || [];
@@ -1971,7 +1978,6 @@ document.addEventListener('DOMContentLoaded', function() {
     return data;
   }
 
-  // ── Helper : poll vimeo status et retourner duration_seconds ──
   async function pollForDuration(vimeoUri, token, statusEl) {
     const POLL_INTERVAL = 4000;
     const MAX_ATTEMPTS  = 60;
@@ -2033,19 +2039,8 @@ document.addEventListener('DOMContentLoaded', function() {
     if (coverPreview && c.cover_url) { coverPreview.src = c.cover_url; coverPreview.style.display = 'block'; }
     setValue('edit-cover-url', c.cover_url || '');
 
-    const faqSource    = Array.isArray(c._course_faq_of_courses)          && c._course_faq_of_courses.length
-      ? c._course_faq_of_courses.map(f => ({ question: f.question, answer: f.response || f.answer || '' }))
-      : (Array.isArray(c.faq) ? c.faq : []);
-    const skillsSource = Array.isArray(c._course_skills_of_courses)       && c._course_skills_of_courses.length
-      ? c._course_skills_of_courses.map(s => s.content)
-      : (Array.isArray(c.skills) ? c.skills : []);
-    const pubTargetSource = Array.isArray(c._course_public_target_of_courses) && c._course_public_target_of_courses.length
-      ? c._course_public_target_of_courses.map(p => p.content)
-      : (Array.isArray(c.public_target) ? c.public_target : []);
-
-    _editSkills      = skillsSource;
-    _editFaq         = faqSource;
-    _editPublicTarget = pubTargetSource;
+    // ✅ CORRECTION 1 — on utilise directement _editFaq/_editSkills/_editPublicTarget
+    // déjà remplis depuis l'API dans loadEditSection, pas besoin de les recalculer ici
 
     renderEditSkills();
     renderEditFaq();
@@ -2073,27 +2068,151 @@ document.addEventListener('DOMContentLoaded', function() {
     return result;
   }
 
+  // ✅ CORRECTION 3 — initRessourcesEditor avec popup lien complet + édition de lien existant
   function initRessourcesEditor() {
     const editor = document.getElementById('edit-ressources-html');
     const hidden = document.getElementById('edit-ressources-html-hidden');
     if (!editor || editor._resBound) return;
     editor._resBound = true;
+
     if (_currentCourse?.ressources_html) {
       editor.innerHTML = _currentCourse.ressources_html;
       if (hidden) hidden.value = _currentCourse.ressources_html;
     }
+
     editor.addEventListener('input', () => { if (hidden) hidden.value = editor.innerHTML; });
-    document.querySelectorAll('.edit-rt-btn[data-cmd]').forEach(btn => {
+    editor.addEventListener('focus', () => editor.classList.add('rt-focused'));
+    editor.addEventListener('blur',  () => editor.classList.remove('rt-focused'));
+
+    // Créer la popup lien inline si elle n'existe pas encore
+    let linkPopup = document.getElementById('edit-res-link-popup');
+    if (!linkPopup) {
+      linkPopup = document.createElement('div');
+      linkPopup.id = 'edit-res-link-popup';
+      linkPopup.style.cssText = 'display:none;position:absolute;z-index:9999;background:#fff;border:1.5px solid #e5e7eb;border-radius:10px;padding:14px;box-shadow:0 4px 20px rgba(0,0,0,.12);width:320px;';
+      linkPopup.innerHTML = `
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <input id="edit-res-link-text" type="text" placeholder="Texte du lien" style="font-family:DM Sans,sans-serif;font-size:.82rem;padding:7px 10px;border:1.5px solid #e5e7eb;border-radius:7px;outline:none;" />
+          <input id="edit-res-link-url" type="text" placeholder="https://..." style="font-family:DM Sans,sans-serif;font-size:.82rem;padding:7px 10px;border:1.5px solid #e5e7eb;border-radius:7px;outline:none;" />
+          <div style="display:flex;gap:8px;justify-content:flex-end;">
+            <button id="edit-res-link-cancel" style="padding:6px 14px;background:#f3f4f6;border:none;border-radius:7px;font-family:DM Sans,sans-serif;font-size:.78rem;font-weight:600;cursor:pointer;">Annuler</button>
+            <button id="edit-res-link-ok" style="padding:6px 14px;background:#2563eb;color:#fff;border:none;border-radius:7px;font-family:DM Sans,sans-serif;font-size:.78rem;font-weight:700;cursor:pointer;">✓ Insérer</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(linkPopup);
+    }
+
+    const linkText = document.getElementById('edit-res-link-text');
+    const linkUrl  = document.getElementById('edit-res-link-url');
+    const linkOk   = document.getElementById('edit-res-link-ok');
+    const linkCx   = document.getElementById('edit-res-link-cancel');
+
+    function closeLinkPopup() {
+      linkPopup.style.display = 'none';
+      _resSavedRange = null;
+      editor.focus();
+    }
+
+    function positionPopup() {
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount) {
+        const rect = sel.getRangeAt(0).getBoundingClientRect();
+        linkPopup.style.top  = (window.scrollY + rect.bottom + 8) + 'px';
+        linkPopup.style.left = Math.min(window.scrollX + rect.left, window.innerWidth - 340) + 'px';
+      }
+    }
+
+    // Bouton lien dans la toolbar ressources
+    document.querySelectorAll('.edit-rt-btn[data-cmd="edit-res-link"]').forEach(btn => {
       if (btn._resBound) return; btn._resBound = true;
       btn.addEventListener('click', e => {
         e.preventDefault();
-        if (document.activeElement === editor || editor.contains(document.getSelection()?.anchorNode)) {
-          document.execCommand(btn.dataset.cmd, false, null);
-          editor.focus();
-          if (hidden) hidden.value = editor.innerHTML;
+        const sel = window.getSelection();
+
+        // Vérifier si le curseur est sur un lien existant → mode édition
+        let existingLink = null;
+        if (sel && sel.anchorNode) {
+          existingLink = sel.anchorNode.nodeType === 1
+            ? sel.anchorNode.closest('a')
+            : sel.anchorNode.parentElement?.closest('a');
         }
+
+        if (existingLink) {
+          // Mode édition du lien existant
+          _resSavedRange = null;
+          linkText.value = existingLink.textContent || '';
+          linkUrl.value  = existingLink.getAttribute('href') || '';
+          linkOk._editingLink = existingLink;
+        } else {
+          // Mode insertion nouveau lien
+          if (sel && sel.rangeCount) {
+            _resSavedRange = sel.getRangeAt(0).cloneRange();
+            linkText.value = sel.toString() || '';
+          }
+          linkUrl.value = '';
+          linkOk._editingLink = null;
+        }
+
+        positionPopup();
+        linkPopup.style.display = 'block';
+        linkUrl.focus();
       });
     });
+
+    linkCx?.addEventListener('click', closeLinkPopup);
+
+    linkOk?.addEventListener('click', () => {
+      const txt = linkText.value.trim();
+      const url = linkUrl.value.trim();
+      if (!url) { closeLinkPopup(); return; }
+
+      if (linkOk._editingLink) {
+        // Modifier le lien existant sans toucher au texte autour
+        linkOk._editingLink.href = url;
+        if (txt) linkOk._editingLink.textContent = txt;
+        linkOk._editingLink = null;
+      } else {
+        // Insérer un nouveau lien
+        editor.focus();
+        if (_resSavedRange) {
+          const sel2 = window.getSelection();
+          sel2.removeAllRanges();
+          sel2.addRange(_resSavedRange);
+        }
+        const label = txt || url;
+        document.execCommand('insertHTML', false,
+          `<a href="${url}" target="_blank" rel="noopener" style="color:#2563eb;text-decoration:underline;">${label}</a>`
+        );
+      }
+
+      if (hidden) hidden.value = editor.innerHTML;
+      closeLinkPopup();
+    });
+
+    [linkText, linkUrl].forEach(inp => inp?.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); linkOk.click(); }
+      if (e.key === 'Escape') { closeLinkPopup(); }
+    }));
+
+    // Fermer popup si clic en dehors
+    document.addEventListener('click', function closeOnOutside(e) {
+      if (linkPopup.style.display !== 'none' && !linkPopup.contains(e.target) && !e.target.closest('.edit-rt-btn')) {
+        closeLinkPopup();
+      }
+    });
+
+    // Boutons format standard (bold, italic, listes, blocs)
+    document.querySelectorAll('.edit-rt-btn[data-cmd]:not([data-cmd="edit-res-link"])').forEach(btn => {
+      if (btn._resBound) return; btn._resBound = true;
+      btn.addEventListener('click', e => {
+        e.preventDefault();
+        document.execCommand(btn.dataset.cmd, false, null);
+        editor.focus();
+        if (hidden) hidden.value = editor.innerHTML;
+      });
+    });
+
     document.querySelectorAll('.edit-rt-btn[data-block]').forEach(btn => {
       if (btn._resBound) return; btn._resBound = true;
       btn.addEventListener('click', e => {
@@ -2478,14 +2597,39 @@ document.addEventListener('DOMContentLoaded', function() {
     };
   }
 
+  // ✅ CORRECTION 2 — Bouton save avec animation + message d'attente pendant la publication Webflow
   function initInfosForm(courseId) {
     const btn = document.getElementById('edit-submit-infos');
     if (!btn) return;
 
+    // Créer le bandeau d'avertissement si pas encore présent
+    let warningBanner = document.getElementById('edit-submit-warning-banner');
+    if (!warningBanner) {
+      warningBanner = document.createElement('div');
+      warningBanner.id = 'edit-submit-warning-banner';
+      warningBanner.style.cssText = 'display:none;background:#fffbeb;border:1.5px solid #fcd34d;border-radius:10px;padding:12px 16px;font-size:.78rem;color:#92400e;line-height:1.6;margin-top:12px;';
+      warningBanner.innerHTML = '⏳ <strong>Publication en cours…</strong> Les modifications doivent se synchroniser sur la plateforme, cela peut prendre 30 à 60 secondes. <strong>Merci de ne pas fermer la page ni de cliquer à nouveau.</strong>';
+      btn.parentElement?.appendChild(warningBanner);
+    }
+
+    // Animation points de chargement
+    let _dotInterval = null;
+    function startDotAnimation() {
+      let dots = 0;
+      _dotInterval = setInterval(() => {
+        dots = (dots + 1) % 4;
+        btn.textContent = 'Publication en cours' + '.'.repeat(dots);
+      }, 400);
+    }
+    function stopDotAnimation() {
+      if (_dotInterval) { clearInterval(_dotInterval); _dotInterval = null; }
+    }
+
     btn.onclick = async function () {
       const token = getToken();
-      btn.disabled    = true;
-      btn.textContent = 'Enregistrement…';
+      btn.disabled = true;
+      warningBanner.style.display = 'block';
+      startDotAnimation();
 
       const newPriceRaw    = (document.getElementById('edit-new-price')?.value || '').trim();
       const newPriceCents  = newPriceRaw ? Math.round(parseFloat(newPriceRaw) * 100) : 0;
@@ -2523,6 +2667,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
         await refreshAuth();
 
+        stopDotAnimation();
+        warningBanner.style.display = 'none';
+
         if (askingNewPrice) {
           document.getElementById('popup-request-sent-msg').textContent =
             'Vos modifications sont désormais en ligne. Votre demande de changement de prix a bien été enregistrée et sera traitée prochainement par notre équipe.';
@@ -2536,8 +2683,9 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
       } catch(e) {
+        stopDotAnimation();
+        warningBanner.style.display = 'none';
         showToastEdit('❌ Erreur : ' + e.message, 5000);
-      } finally {
         btn.disabled    = false;
         btn.textContent = '💾 Enregistrer les modifications';
       }
@@ -2619,7 +2767,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const fileInput = document.getElementById('edit-add-module-video-file');
     if (fileInput) fileInput.value = '';
     document.getElementById('edit-add-module-confirm').disabled = true;
-    // Reset champ durée : réactiver au cas où
     const durInput = document.getElementById('edit-add-module-duration');
     if (durInput) { durInput.disabled = false; durInput.style.background = ''; durInput.style.color = ''; }
     overlay.classList.add('active');
@@ -2683,7 +2830,6 @@ document.addEventListener('DOMContentLoaded', function() {
             body: JSON.stringify({ vimeo_uri, module_temp_id: moduleTempId }),
           });
 
-          // ✅ MODIF 1 : récupérer la durée depuis Vimeo et remplir automatiquement
           statusEl.textContent = 'Récupération de la durée…';
           const durSec = await pollForDuration(vimeo_uri, token, statusEl);
           const durInput = document.getElementById('edit-add-module-duration');
@@ -2801,7 +2947,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('replace-video-module-id').value    = moduleId;
     document.getElementById('replace-video-module-title').value = moduleTitle || '';
     document.getElementById('replace-video-new-uri').value     = '';
-    document.getElementById('replace-video-duration-seconds').value = '0'; // ✅ reset durée
+    document.getElementById('replace-video-duration-seconds').value = '0';
     document.getElementById('replace-status-text').textContent = '';
     document.getElementById('replace-progress-bar').style.display = 'none';
     document.getElementById('replace-video-submit-btn').disabled = true;
@@ -2841,7 +2987,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
         await fetch(VIMEO_FINALIZE_URL, { method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+token}, body: JSON.stringify({ vimeo_uri, module_temp_id: 'replace-'+moduleId }) });
 
-        // ✅ MODIF 2 : récupérer la durée depuis Vimeo et la stocker dans un champ caché
         statusEl.textContent = 'Récupération de la durée…';
         const durSec = await pollForDuration(vimeo_uri, token, statusEl);
         const durHidden = document.getElementById('replace-video-duration-seconds');
@@ -2870,7 +3015,7 @@ document.addEventListener('DOMContentLoaded', function() {
           payload: {
             new_vimeo_uri:    newUri,
             module_title:     moduleTitle,
-            duration_seconds: durSec,  // ✅ durée de la nouvelle vidéo envoyée dans le payload
+            duration_seconds: durSec,
           }
         });
         document.getElementById('popup-replace-video')?.classList.remove('active');
