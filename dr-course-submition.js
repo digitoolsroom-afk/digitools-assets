@@ -1768,17 +1768,15 @@ document.addEventListener('DOMContentLoaded', function() {
   const getAuth  = () => { try { return JSON.parse(localStorage.getItem('auth') || 'null'); } catch { return null; } };
   const getToken = () => { const a = getAuth(); return a?.authToken || a?.token || a?.jwt || null; };
 
-  let _currentCourse   = null;
-  let _currentChapters = [];
-  let _currentModules  = [];
-  let _allRequests     = [];
-  let _editSkills      = [];
-  let _editFaq         = [];
+  let _currentCourse    = null;
+  let _currentChapters  = [];
+  let _currentModules   = [];
+  let _allRequests      = [];
+  let _editSkills       = [];
+  let _editFaq          = [];
   let _editPublicTarget = [];
-  let _sessionId       = null;
-
-  // ── Variables pour l'éditeur ressources (popup lien) ──
-  let _resSavedRange = null;
+  let _sessionId        = null;
+  let _resSavedRange    = null;
 
   const REQUIRED_TITLES = ['Présentation de la formation', 'Plan de la formation'];
 
@@ -1866,10 +1864,10 @@ document.addEventListener('DOMContentLoaded', function() {
       _currentChapters = (courseData.chapters || []).sort((a, b) => a.order_index - b.order_index);
       _currentModules  = courseData.modules  || [];
 
-      // ✅ CORRECTION 1 — FAQ/Skills/Target depuis l'API, filtrés sur status published
-      _editFaq         = (courseData.faq     || []).filter(f => f.status !== 'deleted').map(f => ({ question: f.question, answer: f.response || f.answer || '' }));
-      _editSkills      = (courseData.skills  || []).filter(s => s.status !== 'deleted').map(s => s.content);
-      _editPublicTarget = (courseData.target || []).filter(p => p.status !== 'deleted').map(p => p.content);
+      // ✅ CORRECTION 1 — FAQ/Skills/Target depuis l'API, filtrés sur status !== 'deleted'
+      _editFaq          = (courseData.faq     || []).filter(f => f.status !== 'deleted').map(f => ({ question: f.question, answer: f.response || f.answer || '' }));
+      _editSkills       = (courseData.skills  || []).filter(s => s.status !== 'deleted').map(s => s.content);
+      _editPublicTarget = (courseData.target  || []).filter(p => p.status !== 'deleted').map(p => p.content);
 
       const authData = getAuth();
       const allChangeRequests = authData?.freelance?.course_change_request || [];
@@ -2018,12 +2016,14 @@ document.addEventListener('DOMContentLoaded', function() {
     setValue('edit-theme',         c.theme             || '');
     setValue('edit-title',         c.title             || '');
     setValue('edit-desc-short',    c.description_short || '');
+
     const descLongEl = document.getElementById('edit-desc-long');
     if (descLongEl) {
       descLongEl.innerHTML = c.description_long || '';
       const descLongHidden = document.getElementById('edit-desc-long-hidden');
       if (descLongHidden) descLongHidden.value = c.description_long || '';
     }
+
     setValue('edit-trainer-bio',   c.trainer_bio       || '');
     setValue('edit-duration',      c.duration_minutes  || '');
     setValue('edit-modules-count', c.modules_count     || '');
@@ -2039,9 +2039,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (coverPreview && c.cover_url) { coverPreview.src = c.cover_url; coverPreview.style.display = 'block'; }
     setValue('edit-cover-url', c.cover_url || '');
 
-    // ✅ CORRECTION 1 — on utilise directement _editFaq/_editSkills/_editPublicTarget
-    // déjà remplis depuis l'API dans loadEditSection, pas besoin de les recalculer ici
-
+    // ✅ _editFaq/_editSkills/_editPublicTarget déjà remplis dans loadEditSection
     renderEditSkills();
     renderEditFaq();
     renderEditPublicTarget();
@@ -2059,16 +2057,46 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   function getRequestFor(targetId, targetType, changeTypes) {
-    const result = _allRequests.find(r =>
+    return _allRequests.find(r =>
       (String(r.target_id) === String(targetId)) &&
       r.target_type === targetType &&
       (Array.isArray(changeTypes) ? changeTypes.includes(r.change_type) : r.change_type === changeTypes) &&
       (r.status === 'draft' || r.status === 'pending')
     );
-    return result;
   }
 
-  // ✅ CORRECTION 3 — initRessourcesEditor avec popup lien complet + édition de lien existant
+  // ✅ CORRECTION 3 — initDescLongEditor scopé à sa propre toolbar
+  function initDescLongEditor() {
+    const editor = document.getElementById('edit-desc-long');
+    const hidden = document.getElementById('edit-desc-long-hidden');
+    if (!editor || editor._rtBound) return;
+    editor._rtBound = true;
+
+    editor.addEventListener('input', () => { if (hidden) hidden.value = editor.innerHTML; });
+
+    // Scoper uniquement la toolbar de la carte description longue
+    const toolbar = editor.closest('.edit-card')?.querySelector('div[style*="background:#f8f9fa"]');
+    if (toolbar) {
+      toolbar.querySelectorAll('.edit-rt-btn[data-cmd]').forEach(btn => {
+        btn.addEventListener('click', e => {
+          e.preventDefault();
+          document.execCommand(btn.dataset.cmd, false, null);
+          editor.focus();
+          if (hidden) hidden.value = editor.innerHTML;
+        });
+      });
+      toolbar.querySelectorAll('.edit-rt-btn[data-block]').forEach(btn => {
+        btn.addEventListener('click', e => {
+          e.preventDefault();
+          document.execCommand('formatBlock', false, btn.dataset.block);
+          editor.focus();
+          if (hidden) hidden.value = editor.innerHTML;
+        });
+      });
+    }
+  }
+
+  // ✅ CORRECTION 3 — initRessourcesEditor scopé à sa propre toolbar + popup lien complet
   function initRessourcesEditor() {
     const editor = document.getElementById('edit-ressources-html');
     const hidden = document.getElementById('edit-ressources-html-hidden');
@@ -2089,7 +2117,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (!linkPopup) {
       linkPopup = document.createElement('div');
       linkPopup.id = 'edit-res-link-popup';
-      linkPopup.style.cssText = 'display:none;position:absolute;z-index:9999;background:#fff;border:1.5px solid #e5e7eb;border-radius:10px;padding:14px;box-shadow:0 4px 20px rgba(0,0,0,.12);width:320px;';
+      linkPopup.style.cssText = 'display:none;position:fixed;z-index:9999;background:#fff;border:1.5px solid #e5e7eb;border-radius:10px;padding:14px;box-shadow:0 4px 20px rgba(0,0,0,.12);width:320px;';
       linkPopup.innerHTML = `
         <div style="display:flex;flex-direction:column;gap:8px;">
           <input id="edit-res-link-text" type="text" placeholder="Texte du lien" style="font-family:DM Sans,sans-serif;font-size:.82rem;padding:7px 10px;border:1.5px solid #e5e7eb;border-radius:7px;outline:none;" />
@@ -2114,51 +2142,69 @@ document.addEventListener('DOMContentLoaded', function() {
       editor.focus();
     }
 
-    function positionPopup() {
-      const sel = window.getSelection();
-      if (sel && sel.rangeCount) {
-        const rect = sel.getRangeAt(0).getBoundingClientRect();
-        linkPopup.style.top  = (window.scrollY + rect.bottom + 8) + 'px';
-        linkPopup.style.left = Math.min(window.scrollX + rect.left, window.innerWidth - 340) + 'px';
-      }
-    }
+    // Scoper uniquement la toolbar de la carte ressources
+    const toolbar = editor.closest('.edit-card')?.querySelector('div[style*="background:#f8f9fa"]');
 
-    // Bouton lien dans la toolbar ressources
-    document.querySelectorAll('.edit-rt-btn[data-cmd="edit-res-link"]').forEach(btn => {
-      if (btn._resBound) return; btn._resBound = true;
-      btn.addEventListener('click', e => {
-        e.preventDefault();
-        const sel = window.getSelection();
+    if (toolbar) {
+      // Bouton lien
+      toolbar.querySelectorAll('.edit-rt-btn[data-cmd="edit-res-link"]').forEach(btn => {
+        if (btn._resBound) return; btn._resBound = true;
+        btn.addEventListener('click', e => {
+          e.preventDefault();
+          const sel = window.getSelection();
 
-        // Vérifier si le curseur est sur un lien existant → mode édition
-        let existingLink = null;
-        if (sel && sel.anchorNode) {
-          existingLink = sel.anchorNode.nodeType === 1
-            ? sel.anchorNode.closest('a')
-            : sel.anchorNode.parentElement?.closest('a');
-        }
-
-        if (existingLink) {
-          // Mode édition du lien existant
-          _resSavedRange = null;
-          linkText.value = existingLink.textContent || '';
-          linkUrl.value  = existingLink.getAttribute('href') || '';
-          linkOk._editingLink = existingLink;
-        } else {
-          // Mode insertion nouveau lien
-          if (sel && sel.rangeCount) {
-            _resSavedRange = sel.getRangeAt(0).cloneRange();
-            linkText.value = sel.toString() || '';
+          // Vérifier si le curseur est sur un lien existant → mode édition
+          let existingLink = null;
+          if (sel && sel.anchorNode) {
+            existingLink = sel.anchorNode.nodeType === 1
+              ? sel.anchorNode.closest('a')
+              : sel.anchorNode.parentElement?.closest('a');
           }
-          linkUrl.value = '';
-          linkOk._editingLink = null;
-        }
 
-        positionPopup();
-        linkPopup.style.display = 'block';
-        linkUrl.focus();
+          if (existingLink) {
+            _resSavedRange = null;
+            linkText.value = existingLink.textContent || '';
+            linkUrl.value  = existingLink.getAttribute('href') || '';
+            linkOk._editingLink = existingLink;
+          } else {
+            if (sel && sel.rangeCount) {
+              _resSavedRange = sel.getRangeAt(0).cloneRange();
+              linkText.value = sel.toString() || '';
+            }
+            linkUrl.value = '';
+            linkOk._editingLink = null;
+          }
+
+          // Positionner la popup sous le bouton
+          const rect = btn.getBoundingClientRect();
+          linkPopup.style.top  = (rect.bottom + 8) + 'px';
+          linkPopup.style.left = Math.min(rect.left, window.innerWidth - 340) + 'px';
+          linkPopup.style.display = 'block';
+          linkUrl.focus();
+        });
       });
-    });
+
+      // Boutons format standard
+      toolbar.querySelectorAll('.edit-rt-btn[data-cmd]:not([data-cmd="edit-res-link"])').forEach(btn => {
+        if (btn._resBound) return; btn._resBound = true;
+        btn.addEventListener('click', e => {
+          e.preventDefault();
+          document.execCommand(btn.dataset.cmd, false, null);
+          editor.focus();
+          if (hidden) hidden.value = editor.innerHTML;
+        });
+      });
+
+      toolbar.querySelectorAll('.edit-rt-btn[data-block]').forEach(btn => {
+        if (btn._resBound) return; btn._resBound = true;
+        btn.addEventListener('click', e => {
+          e.preventDefault();
+          document.execCommand('formatBlock', false, btn.dataset.block);
+          editor.focus();
+          if (hidden) hidden.value = editor.innerHTML;
+        });
+      });
+    }
 
     linkCx?.addEventListener('click', closeLinkPopup);
 
@@ -2168,12 +2214,10 @@ document.addEventListener('DOMContentLoaded', function() {
       if (!url) { closeLinkPopup(); return; }
 
       if (linkOk._editingLink) {
-        // Modifier le lien existant sans toucher au texte autour
         linkOk._editingLink.href = url;
         if (txt) linkOk._editingLink.textContent = txt;
         linkOk._editingLink = null;
       } else {
-        // Insérer un nouveau lien
         editor.focus();
         if (_resSavedRange) {
           const sel2 = window.getSelection();
@@ -2195,32 +2239,10 @@ document.addEventListener('DOMContentLoaded', function() {
       if (e.key === 'Escape') { closeLinkPopup(); }
     }));
 
-    // Fermer popup si clic en dehors
     document.addEventListener('click', function closeOnOutside(e) {
       if (linkPopup.style.display !== 'none' && !linkPopup.contains(e.target) && !e.target.closest('.edit-rt-btn')) {
         closeLinkPopup();
       }
-    });
-
-    // Boutons format standard (bold, italic, listes, blocs)
-    document.querySelectorAll('.edit-rt-btn[data-cmd]:not([data-cmd="edit-res-link"])').forEach(btn => {
-      if (btn._resBound) return; btn._resBound = true;
-      btn.addEventListener('click', e => {
-        e.preventDefault();
-        document.execCommand(btn.dataset.cmd, false, null);
-        editor.focus();
-        if (hidden) hidden.value = editor.innerHTML;
-      });
-    });
-
-    document.querySelectorAll('.edit-rt-btn[data-block]').forEach(btn => {
-      if (btn._resBound) return; btn._resBound = true;
-      btn.addEventListener('click', e => {
-        e.preventDefault();
-        document.execCommand('formatBlock', false, btn.dataset.block);
-        editor.focus();
-        if (hidden) hidden.value = editor.innerHTML;
-      });
     });
   }
 
@@ -2263,7 +2285,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const p = typeof req.payload === 'object' ? req.payload : JSON.parse(req.payload || '{}');
             label = p.title || p.module_title || p.chapter_title || '';
           } catch {}
-
           const row = document.createElement('div');
           row.style.cssText = 'background:#fff;border:1.5px dashed #e0e7ff;border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:10px;margin-bottom:8px;';
           row.innerHTML = `
@@ -2540,9 +2561,7 @@ document.addEventListener('DOMContentLoaded', function() {
       const targetEl = document.createElement('div'); targetEl.className = 'edit-request-target';
       try {
         let p = {};
-        if (req.payload) {
-          p = typeof req.payload === 'string' ? JSON.parse(req.payload) : req.payload;
-        }
+        if (req.payload) p = typeof req.payload === 'string' ? JSON.parse(req.payload) : req.payload;
         let targetText = '';
         if (req.change_type === 'delete_chapter') {
           targetText = p.title ? `Chapitre : "${p.title}"` : `Chapitre ID: ${req.target_id}`;
@@ -2597,39 +2616,38 @@ document.addEventListener('DOMContentLoaded', function() {
     };
   }
 
-  // ✅ CORRECTION 2 — Bouton save avec animation + message d'attente pendant la publication Webflow
+  // ✅ CORRECTION 2 — Bouton avec roue qui tourne + largeur fixe + bandeau SOUS le bouton
   function initInfosForm(courseId) {
     const btn = document.getElementById('edit-submit-infos');
     if (!btn) return;
 
-    // Créer le bandeau d'avertissement si pas encore présent
+    // Injecter le CSS de la roue si pas encore fait
+    if (!document.getElementById('edit-spin-style')) {
+      const style = document.createElement('style');
+      style.id = 'edit-spin-style';
+      style.textContent = '@keyframes edit-spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } } .edit-spin-icon { display:inline-block; animation:edit-spin .8s linear infinite; }';
+      document.head.appendChild(style);
+    }
+
+    // Créer le bandeau APRÈS la edit-submit-row (pas dedans)
     let warningBanner = document.getElementById('edit-submit-warning-banner');
     if (!warningBanner) {
       warningBanner = document.createElement('div');
       warningBanner.id = 'edit-submit-warning-banner';
       warningBanner.style.cssText = 'display:none;background:#fffbeb;border:1.5px solid #fcd34d;border-radius:10px;padding:12px 16px;font-size:.78rem;color:#92400e;line-height:1.6;margin-top:12px;';
       warningBanner.innerHTML = '⏳ <strong>Publication en cours…</strong> Les modifications doivent se synchroniser sur la plateforme, cela peut prendre 30 à 60 secondes. <strong>Merci de ne pas fermer la page ni de cliquer à nouveau.</strong>';
-      btn.parentElement?.appendChild(warningBanner);
-    }
-
-    // Animation points de chargement
-    let _dotInterval = null;
-    function startDotAnimation() {
-      let dots = 0;
-      _dotInterval = setInterval(() => {
-        dots = (dots + 1) % 4;
-        btn.textContent = 'Publication en cours' + '.'.repeat(dots);
-      }, 400);
-    }
-    function stopDotAnimation() {
-      if (_dotInterval) { clearInterval(_dotInterval); _dotInterval = null; }
+      const submitRow = btn.closest('.edit-submit-row');
+      submitRow?.insertAdjacentElement('afterend', warningBanner);
     }
 
     btn.onclick = async function () {
       const token = getToken();
+
+      // Fixer la largeur du bouton avant de changer son contenu
+      btn.style.width = btn.offsetWidth + 'px';
       btn.disabled = true;
+      btn.innerHTML = '⚙️ Publication… <span class="edit-spin-icon">⚙️</span>';
       warningBanner.style.display = 'block';
-      startDotAnimation();
 
       const newPriceRaw    = (document.getElementById('edit-new-price')?.value || '').trim();
       const newPriceCents  = newPriceRaw ? Math.round(parseFloat(newPriceRaw) * 100) : 0;
@@ -2667,8 +2685,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
         await refreshAuth();
 
-        stopDotAnimation();
         warningBanner.style.display = 'none';
+        btn.style.width = '';
 
         if (askingNewPrice) {
           document.getElementById('popup-request-sent-msg').textContent =
@@ -2683,11 +2701,11 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
       } catch(e) {
-        stopDotAnimation();
         warningBanner.style.display = 'none';
-        showToastEdit('❌ Erreur : ' + e.message, 5000);
+        btn.style.width = '';
         btn.disabled    = false;
-        btn.textContent = '💾 Enregistrer les modifications';
+        btn.innerHTML   = '💾 Enregistrer les modifications';
+        showToastEdit('❌ Erreur : ' + e.message, 5000);
       }
     };
   }
@@ -2724,8 +2742,7 @@ document.addEventListener('DOMContentLoaded', function() {
     showConfirmModal(
       `Supprimer le chapitre ?`,
       `Vous êtes sur le point de demander la suppression du chapitre "${ch.title}". Cette demande sera soumise à validation.`,
-      '🗑 Demander la suppression',
-      'edit-btn-danger',
+      '🗑 Demander la suppression', 'edit-btn-danger',
       async () => {
         try {
           await sendRequest({ change_type: 'delete_chapter', target_id: String(ch.id), target_type: 'chapter', payload: { title: ch.title } });
@@ -2740,8 +2757,7 @@ document.addEventListener('DOMContentLoaded', function() {
     showConfirmModal(
       `Supprimer le module ?`,
       `Vous êtes sur le point de demander la suppression du module "${mod.title}". Cette demande sera soumise à validation.`,
-      '🗑 Demander la suppression',
-      'edit-btn-danger',
+      '🗑 Demander la suppression', 'edit-btn-danger',
       async () => {
         try {
           await sendRequest({ change_type: 'delete_module', target_id: String(mod.id), target_type: 'module', payload: { title: mod.title, chapter_title: ch.title } });
@@ -2774,14 +2790,14 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   function initAddModuleModal() {
-    const overlay   = document.getElementById('edit-add-module-modal');
+    const overlay    = document.getElementById('edit-add-module-modal');
     if (!overlay) return;
-    const fileInput = document.getElementById('edit-add-module-video-file');
-    const statusEl  = document.getElementById('edit-add-module-status');
-    const progBar   = document.getElementById('edit-add-module-progress-bar');
-    const progFill  = document.getElementById('edit-add-module-progress-fill');
-    const confirmBtn= document.getElementById('edit-add-module-confirm');
-    const uriHidden = document.getElementById('edit-add-module-vimeo-uri');
+    const fileInput  = document.getElementById('edit-add-module-video-file');
+    const statusEl   = document.getElementById('edit-add-module-status');
+    const progBar    = document.getElementById('edit-add-module-progress-bar');
+    const progFill   = document.getElementById('edit-add-module-progress-fill');
+    const confirmBtn = document.getElementById('edit-add-module-confirm');
+    const uriHidden  = document.getElementById('edit-add-module-vimeo-uri');
 
     document.getElementById('edit-add-module-cancel')?.addEventListener('click', () => overlay.classList.remove('active'));
     document.getElementById('edit-add-module-video-btn')?.addEventListener('click', () => fileInput?.click());
@@ -2866,7 +2882,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
       const [m, s] = durRaw.split(':').map(Number);
       const durationSec = m * 60 + s;
-
       const ch = overlay._ch;
       overlay.classList.remove('active');
 
@@ -2920,11 +2935,7 @@ document.addEventListener('DOMContentLoaded', function() {
           change_type: 'add_chapter',
           target_id:   String(_currentCourse.id),
           target_type: 'course',
-          payload: {
-            chapter_title:    title,
-            duration_minutes: duration,
-            nb_modules:       nbModules,
-          },
+          payload: { chapter_title: title, duration_minutes: duration, nb_modules: nbModules },
         });
         fillStructureTab(); fillDemandesTab(); updateSubmitBar();
         showToastEdit('📋 Demande ajoutée — pensez à soumettre !');
@@ -2944,13 +2955,13 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   function openReplaceVideoPopup(moduleId, moduleTitle) {
-    document.getElementById('replace-video-module-id').value    = moduleId;
-    document.getElementById('replace-video-module-title').value = moduleTitle || '';
-    document.getElementById('replace-video-new-uri').value     = '';
+    document.getElementById('replace-video-module-id').value        = moduleId;
+    document.getElementById('replace-video-module-title').value     = moduleTitle || '';
+    document.getElementById('replace-video-new-uri').value          = '';
     document.getElementById('replace-video-duration-seconds').value = '0';
-    document.getElementById('replace-status-text').textContent = '';
-    document.getElementById('replace-progress-bar').style.display = 'none';
-    document.getElementById('replace-video-submit-btn').disabled = true;
+    document.getElementById('replace-status-text').textContent      = '';
+    document.getElementById('replace-progress-bar').style.display   = 'none';
+    document.getElementById('replace-video-submit-btn').disabled    = true;
     document.getElementById('popup-replace-video')?.classList.add('active');
   }
 
@@ -3012,11 +3023,7 @@ document.addEventListener('DOMContentLoaded', function() {
           change_type: 'replace_video',
           target_id:   String(moduleId),
           target_type: 'module',
-          payload: {
-            new_vimeo_uri:    newUri,
-            module_title:     moduleTitle,
-            duration_seconds: durSec,
-          }
+          payload: { new_vimeo_uri: newUri, module_title: moduleTitle, duration_seconds: durSec }
         });
         document.getElementById('popup-replace-video')?.classList.remove('active');
         fillStructureTab(); fillDemandesTab(); updateSubmitBar();
@@ -3122,30 +3129,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   }
 
-  function initDescLongEditor() {
-    const editor = document.getElementById('edit-desc-long');
-    const hidden = document.getElementById('edit-desc-long-hidden');
-    if (!editor || editor._rtBound) return;
-    editor._rtBound = true;
-    editor.addEventListener('input', () => { if (hidden) hidden.value = editor.innerHTML; });
-    document.querySelectorAll('.edit-rt-btn[data-cmd]').forEach(btn => {
-      btn.addEventListener('click', e => {
-        e.preventDefault();
-        document.execCommand(btn.dataset.cmd, false, null);
-        editor.focus();
-        if (hidden) hidden.value = editor.innerHTML;
-      });
-    });
-    document.querySelectorAll('.edit-rt-btn[data-block]').forEach(btn => {
-      btn.addEventListener('click', e => {
-        e.preventDefault();
-        document.execCommand('formatBlock', false, btn.dataset.block);
-        editor.focus();
-        if (hidden) hidden.value = editor.innerHTML;
-      });
-    });
-  }
-
   function initImageUpload(fileInputId, previewId, hiddenId, statusId) {
     const fileInput = document.getElementById(fileInputId);
     if (!fileInput || fileInput._editBound) return;
@@ -3180,14 +3163,13 @@ document.addEventListener('DOMContentLoaded', function() {
       validateCoverRatio(file, function(valid, msg) {
         if (!valid) {
           if (statusEl) { statusEl.textContent = msg; statusEl.style.color = '#ef4444'; }
-          fileInput.value = '';
-          return;
+          fileInput.value = ''; return;
         }
         if (statusEl) { statusEl.style.color = ''; statusEl.textContent = '⏳ Upload…'; }
         const fd = new FormData(); fd.append('file', file);
         fetch(UPLOAD_URL, { method:'POST', headers: token ? { Authorization:'Bearer '+token } : {}, body: fd })
-          .then(function(res) { return res.json(); })
-          .then(function(data) {
+          .then(r => r.json())
+          .then(data => {
             const url = data?.path ? 'https://xmot-l3ir-7kuj.p7.xano.io' + data.path : null;
             if (url) {
               const hidden = document.getElementById(hiddenId); if (hidden) hidden.value = url;
@@ -3195,7 +3177,7 @@ document.addEventListener('DOMContentLoaded', function() {
               if (statusEl) statusEl.textContent = '✅ Uploadé';
             } else { if (statusEl) statusEl.textContent = '❌ Erreur'; }
           })
-          .catch(function() { if (statusEl) statusEl.textContent = '❌ Erreur serveur'; });
+          .catch(() => { if (statusEl) statusEl.textContent = '❌ Erreur serveur'; });
       });
     });
   }
