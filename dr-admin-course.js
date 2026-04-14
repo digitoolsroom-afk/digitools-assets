@@ -4,15 +4,17 @@
 
 (function () {
 
-  const API_BASE         = 'https://xmot-l3ir-7kuj.p7.xano.io/api:sfoT-uEe';
-  const ALL_COURSES_URL  = API_BASE + '/admin_get_all_courses';
-  const PENDING_URL      = API_BASE + '/admin_get_pending_courses';
-  const CHANGES_URL      = API_BASE + '/admin_get_pending_changes';
-  const EARNINGS_URL     = API_BASE + '/get_earnings';
-  const UPDATE_EARNING_URL = API_BASE + '/update_earning_status';
-  const VALIDATE_COURSE  = API_BASE + '/admin_validate_course';
-  const VALIDATE_CHANGE  = API_BASE + '/admin_validate_change';
-  const MODIFY_COURSE_URL= 'https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/modify_course';
+  const API_BASE              = 'https://xmot-l3ir-7kuj.p7.xano.io/api:sfoT-uEe';
+  const ALL_COURSES_URL       = API_BASE + '/admin_get_all_courses';
+  const PENDING_URL           = API_BASE + '/admin_get_pending_courses';
+  const CHANGES_URL           = API_BASE + '/admin_get_pending_changes';
+  const EARNINGS_URL          = API_BASE + '/get_earnings';
+  const UPDATE_EARNING_URL    = API_BASE + '/update_earning_status';
+  const VALIDATE_COURSE       = API_BASE + '/admin_validate_course';
+  const VALIDATE_CHANGE       = API_BASE + '/admin_validate_change';
+  const PRICE_REQUESTS_URL    = API_BASE + '/get_course_asking_new_price';
+  const PRICE_STATUS_URL      = API_BASE + '/change_status_new_price';
+  const MODIFY_COURSE_URL     = 'https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/modify_course';
 
   const getToken = () => localStorage.getItem('adminAuthToken') || null;
 
@@ -20,6 +22,7 @@
   let _pendingCourses = [];
   let _changes        = [];
   let _earnings       = { pending: [], completed: [] };
+  let _priceRequests  = [];
   let _currentCourse  = null;
   let _currentChange  = null;
 
@@ -118,13 +121,16 @@
     const pendingCount  = _pendingCourses.filter(c => c.status === 'pending_validation').length;
     const changesCount  = _changes.length;
     const earningsCount = (_earnings.pending || []).length;
+    const pricesCount   = _priceRequests.length;
 
     const pb = document.getElementById('bo-badge-pending');
     const cb = document.getElementById('bo-badge-changes');
     const eb = document.getElementById('bo-badge-earnings');
-    if (pb) { pb.textContent = pendingCount;  pb.dataset.count = pendingCount; }
-    if (cb) { cb.textContent = changesCount;  cb.dataset.count = changesCount; }
-    if (eb) { eb.textContent = earningsCount; eb.dataset.count = earningsCount; }
+    const prb= document.getElementById('bo-badge-prices');
+    if (pb)  { pb.textContent  = pendingCount;  pb.dataset.count  = pendingCount; }
+    if (cb)  { cb.textContent  = changesCount;  cb.dataset.count  = changesCount; }
+    if (eb)  { eb.textContent  = earningsCount; eb.dataset.count  = earningsCount; }
+    if (prb) { prb.textContent = pricesCount;   prb.dataset.count = pricesCount; }
   }
 
   // ============================================================
@@ -135,22 +141,25 @@
     const headers = { 'Authorization': 'Bearer ' + token };
 
     try {
-      const [allRes, pendingRes, changesRes, earningsRes] = await Promise.all([
-        fetch(ALL_COURSES_URL,  { headers }),
-        fetch(PENDING_URL,      { headers }),
-        fetch(CHANGES_URL,      { headers }),
-        fetch(EARNINGS_URL,     { headers }),
+      const [allRes, pendingRes, changesRes, earningsRes, pricesRes] = await Promise.all([
+        fetch(ALL_COURSES_URL,   { headers }),
+        fetch(PENDING_URL,       { headers }),
+        fetch(CHANGES_URL,       { headers }),
+        fetch(EARNINGS_URL,      { headers }),
+        fetch(PRICE_REQUESTS_URL,{ headers }),
       ]);
 
       if (allRes.ok)     _allCourses     = await allRes.json();
       if (pendingRes.ok) _pendingCourses = await pendingRes.json();
       if (changesRes.ok) _changes        = await changesRes.json();
       if (earningsRes.ok) _earnings      = await earningsRes.json();
+      if (pricesRes.ok)  _priceRequests  = await pricesRes.json();
 
       renderTableAll();
       renderPendingList();
       renderChangesList();
       renderEarnings();
+      renderPriceRequests();
       updateBadges();
 
     } catch(e) {
@@ -339,7 +348,7 @@
 
       const actionsHTML = type === 'pending' ? `
         <div class="bo-earning-actions">
-          <button class="bo-btn bo-btn-success bo-earning-btn" data-id="${earning.id}" data-action="paid"       style="font-size:.75rem;padding:6px 14px;">✅ Valider</button>
+          <button class="bo-btn bo-btn-success bo-earning-btn" data-id="${earning.id}" data-action="paid"        style="font-size:.75rem;padding:6px 14px;">✅ Valider</button>
           <button class="bo-btn bo-earning-btn bo-earning-btn-suspicious" data-id="${earning.id}" data-action="suspicious" style="font-size:.75rem;padding:6px 14px;">⚠️ Suspect</button>
           <button class="bo-btn bo-btn-danger  bo-earning-btn" data-id="${earning.id}" data-action="cancelled"  style="font-size:.75rem;padding:6px 14px;">❌ Annuler</button>
         </div>
@@ -365,7 +374,6 @@
       container.appendChild(card);
     });
 
-    // Listeners boutons action
     container.querySelectorAll('.bo-earning-btn').forEach(btn => {
       btn.addEventListener('click', () => updateEarningStatus(btn.dataset.id, btn.dataset.action));
     });
@@ -387,11 +395,114 @@
 
       showToast('✅ Statut mis à jour → ' + newStatus);
 
-      // Recharger les données et re-render
       const earningsRes = await fetch(EARNINGS_URL, { headers: { 'Authorization': 'Bearer ' + token } });
       if (earningsRes.ok) _earnings = await earningsRes.json();
       renderEarnings();
       updateBadges();
+
+    } catch(e) {
+      showToast('❌ Erreur : ' + e.message, 5000);
+      if (btns) btns.forEach(b => { b.disabled = false; });
+    }
+  }
+
+  // ============================================================
+  // ✅ ONGLET DEMANDES DE PRIX
+  // ============================================================
+  function renderPriceRequests() {
+    const container = document.getElementById('bo-list-prices');
+    if (!container) return;
+
+    if (!_priceRequests.length) {
+      container.innerHTML = '<div class="bo-empty">Aucune demande de changement de prix en attente 🎉</div>';
+      return;
+    }
+
+    container.innerHTML = '';
+    _priceRequests.forEach(item => {
+      const card = document.createElement('div');
+      card.className = 'bo-pending-card';
+      card.id = 'price-card-' + item.id;
+      card.style.cssText = 'flex-direction:column;align-items:flex-start;gap:14px;cursor:default;';
+
+      card.innerHTML = `
+        <div style="display:flex;align-items:center;gap:14px;width:100%;">
+          <img
+            style="width:44px;height:44px;border-radius:10px;object-fit:cover;flex-shrink:0;background:#f3f4f6;border:1px solid #e5e7eb;"
+            src="${item.icon_cours_url || ''}" alt=""
+            onerror="this.style.display='none'"
+          />
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:.92rem;font-weight:700;color:#111112;margin-bottom:6px;">${item.title || '—'}</div>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+              <div style="display:flex;align-items:center;gap:6px;">
+                <span style="font-size:.75rem;color:#9ca3af;">Prix actuel</span>
+                <span style="font-size:.88rem;font-weight:700;color:#374151;">${euros(item.price_cents)}</span>
+              </div>
+              <span style="font-size:1rem;color:#9ca3af;">→</span>
+              <div style="display:flex;align-items:center;gap:6px;">
+                <span style="font-size:.75rem;color:#9ca3af;">Nouveau prix demandé</span>
+                <span style="font-size:.95rem;font-weight:800;color:#2563eb;">${euros(item.new_price)}</span>
+              </div>
+              <span style="background:#dbeafe;color:#1d4ed8;font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:999px;">⏳ En attente</span>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;width:100%;padding-top:10px;border-top:1px solid #f1f5f9;">
+          <button
+            class="bo-btn bo-btn-danger bo-price-btn"
+            data-id="${item.id}"
+            data-action="refused"
+            style="font-size:.78rem;padding:8px 18px;"
+          >✕ Refuser</button>
+          <button
+            class="bo-btn bo-btn-success bo-price-btn"
+            data-id="${item.id}"
+            data-action="accepted"
+            style="font-size:.78rem;padding:8px 18px;"
+          >✅ Accepter le nouveau prix</button>
+        </div>
+      `;
+
+      container.appendChild(card);
+    });
+
+    container.querySelectorAll('.bo-price-btn').forEach(btn => {
+      btn.addEventListener('click', () => updatePriceStatus(btn.dataset.id, btn.dataset.action));
+    });
+  }
+
+  async function updatePriceStatus(courseId, status) {
+    const token = getToken();
+    const card  = document.getElementById('price-card-' + courseId);
+    const btns  = card?.querySelectorAll('.bo-price-btn');
+    if (btns) btns.forEach(b => { b.disabled = true; });
+
+    try {
+      const res = await fetch(PRICE_STATUS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify({ courses_id: parseInt(courseId), status }),
+      });
+      if (!res.ok) throw new Error('Erreur serveur (' + res.status + ')');
+
+      showToast(status === 'accepted' ? '✅ Nouveau prix accepté !' : '✕ Changement de prix refusé');
+
+      // Feedback visuel sur la carte avant de la retirer
+      if (card) {
+        card.style.transition = 'opacity .4s';
+        card.style.opacity = '0.4';
+        card.innerHTML = `
+          <div style="padding:14px;font-size:.85rem;font-weight:600;color:${status === 'accepted' ? '#15803d' : '#b91c1c'};">
+            ${status === 'accepted' ? '✅ Prix accepté' : '✕ Prix refusé'}
+          </div>
+        `;
+      }
+
+      // Rafraîchir la liste
+      const pricesRes = await fetch(PRICE_REQUESTS_URL, { headers: { 'Authorization': 'Bearer ' + token } });
+      if (pricesRes.ok) _priceRequests = await pricesRes.json();
+      setTimeout(() => { renderPriceRequests(); updateBadges(); }, 1200);
 
     } catch(e) {
       showToast('❌ Erreur : ' + e.message, 5000);
@@ -411,11 +522,11 @@
     const body   = document.getElementById('bo-panel-body');
     const actions= document.getElementById('bo-panel-actions');
 
-    document.getElementById('bo-panel-icon').src            = course.icon_cours_url || '';
-    document.getElementById('bo-panel-title').textContent   = course.title || '—';
-    document.getElementById('bo-panel-subtitle').textContent= (course._freelancer_profile?.display_name || '—') + ' · ' + (course.theme || '');
-    const statusInfo = statusLabel(course.status);
-    const statusBadge= document.getElementById('bo-panel-status-badge');
+    document.getElementById('bo-panel-icon').src             = course.icon_cours_url || '';
+    document.getElementById('bo-panel-title').textContent    = course.title || '—';
+    document.getElementById('bo-panel-subtitle').textContent = (course._freelancer_profile?.display_name || '—') + ' · ' + (course.theme || '');
+    const statusInfo  = statusLabel(course.status);
+    const statusBadge = document.getElementById('bo-panel-status-badge');
     statusBadge.textContent = statusInfo.text;
     statusBadge.className   = 'bo-status-badge ' + statusInfo.cls;
 
@@ -636,9 +747,9 @@
     card.className = 'bo-change-action-card';
     card.id = 'change-action-' + change.id;
 
-    const msgId     = 'change-msg-' + change.id;
+    const msgId     = 'change-msg-'     + change.id;
     const approveId = 'change-approve-' + change.id;
-    const rejectId  = 'change-reject-' + change.id;
+    const rejectId  = 'change-reject-'  + change.id;
 
     card.innerHTML = `
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
@@ -647,8 +758,8 @@
       </div>
       <textarea id="${msgId}" placeholder="Message pour le formateur (optionnel)…" style="width:100%;padding:8px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-family:DM Sans,sans-serif;font-size:.78rem;resize:vertical;min-height:56px;outline:none;margin-bottom:8px;"></textarea>
       <div style="display:flex;gap:8px;justify-content:flex-end;">
-        <button id="${rejectId}"  class="bo-btn bo-btn-danger"   style="padding:7px 16px;font-size:.78rem;">✕ Rejeter</button>
-        <button id="${approveId}" class="bo-btn bo-btn-success"  style="padding:7px 16px;font-size:.78rem;">✅ Approuver</button>
+        <button id="${rejectId}"  class="bo-btn bo-btn-danger"  style="padding:7px 16px;font-size:.78rem;">✕ Rejeter</button>
+        <button id="${approveId}" class="bo-btn bo-btn-success" style="padding:7px 16px;font-size:.78rem;">✅ Approuver</button>
       </div>
     `;
 
