@@ -528,10 +528,8 @@ document.addEventListener("DOMContentLoaded", async function () {
     card.innerHTML = `
       ${img ? `<img class="fp-article-cover" src="${img}" alt="${title}" />` : `<div class="fp-article-cover"></div>`}
       <div class="fp-article-body">
-        ${isRes
-          ? `<span class="fp-content-type-badge ressource">🔗 RESSOURCE INCLUSE</span>`
-          : `<span class="fp-content-type-badge article">✍️ Article</span>`
-        }
+        <span class="fp-content-type-badge article">✍️ Article</span>
+        ${isRes ? `<span class="fp-content-type-badge ressource">🔗 Ressource</span>` : ""}
         <div class="fp-article-title">${title}</div>
         <div class="fp-course-meta">
           <span class="fp-meta-badge">⏱ ${tempsMin} min</span>
