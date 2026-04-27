@@ -159,11 +159,11 @@ document.addEventListener("DOMContentLoaded", async function () {
   const nbNotation  = data.nb_notation ?? 0;
   const avgNotation = data.notation;
 
-  setText("#average_avis", nbNotation > 0 && avgNotation != null ? parseFloat(avgNotation).toFixed(1) : "—");
+  setText("#average_avis", nbNotation > 0 && avgNotation != null ? parseFloat(avgNotation).toFixed(1) : "N/A");
   const nbAvisEl = $("#nb_avis");
-  if (nbAvisEl) nbAvisEl.textContent = nbNotation > 0 ? `(${nbNotation} avis)` : "";
-  setText("#nb_project",   nbProjects  > 0 ? nbProjects  : "—");
-  setText("#nb_followers", nbFollowers > 0 ? nbFollowers : "—");
+  if (nbAvisEl) nbAvisEl.textContent = `(${nbNotation} avis)`;
+  setText("#nb_project",   nbProjects);
+  setText("#nb_followers", nbFollowers);
 
   // Bouton suivre
   const followBtn = $("#add_follower");
