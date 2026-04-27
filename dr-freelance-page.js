@@ -143,6 +143,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   setText("#formateur-display-name", data.display_name);
   setText("#formateur-headline",     data.headline);
+  setText("#formateur-domaine-activity", data.domaine_activity ? `Domaine d'expertise ${data.domaine_activity}` : "");
 
   // Domaine tags (sous_domaine_activity)
   const tagList     = $("#category-list-domaine2");
