@@ -177,7 +177,7 @@ document.addEventListener("DOMContentLoaded", async function () {
       followBtn.addEventListener("click", async () => {
         const token = getToken();
         if (!token) {
-          const nonco = document.querySelector(".abo-nonco-container"); if (nonco) { nonco.style.cssText = "display:flex!important"; }return;
+          const nonco = [...document.querySelectorAll(".abo-nonco-container")].pop(); if (nonco) { nonco.style.cssText = "display:flex!important"; }return;
         }
         followBtn.disabled = true;
         try {
@@ -697,7 +697,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     triggerBtn.addEventListener("click", async () => {
       const token = getToken();
       if (!token) {
-        const nonco = document.querySelector(".abo-nonco-container"); if (nonco) { nonco.style.cssText = "display:flex!important"; }return;
+        const nonco = [...document.querySelectorAll(".abo-nonco-container")].pop(); if (nonco) { nonco.style.cssText = "display:flex!important"; }return;
       }
       try {
         const res = await fetch("https://xmot-l3ir-7kuj.p7.xano.io/api:_NUnyuKi/get_freelance_user_id", {
@@ -1116,7 +1116,7 @@ function initBooking(data, rules, exceptions, bookings) {
 
   function openBooking(type) {
     const token=getToken();
-    if(!token){const nonco = document.querySelector(".abo-nonco-container"); if (nonco) { nonco.style.cssText = "display:flex!important"; }return;}
+    if(!token){const nonco = [...document.querySelectorAll(".abo-nonco-container")].pop(); if (nonco) { nonco.style.cssText = "display:flex!important"; }return;}
     bookingState={type,date:null,slot:null,duration:type==='coaching'?coachingDurations[0]:null,currentMonth:new Date(),phone:'',note:'',url:'',attachment1_url:'',attachment1_name:'',attachment2_url:'',attachment2_name:''};
     currentPaymentIntentId=null;
     modalTitle.textContent=type==='coaching'?'Réserver une session coaching':'Prendre rendez-vous';
