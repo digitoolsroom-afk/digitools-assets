@@ -257,8 +257,10 @@ document.addEventListener("DOMContentLoaded", async function () {
   }
 
   // Dernière activité (last_login.logget_at)
-  if (lastLogin?.logget_at) {
-    const diffMs  = Date.now() - lastLogin.logget_at;
+  (function() {
+    const ts = lastLogin?.logget_at || lastLogin?.created_at || null;
+    if (!ts) { setText("#fp-last-activity", "—"); return; }
+    const diffMs  = Date.now() - Number(ts);
     const diffMin = Math.floor(diffMs / 60000);
     const diffH   = Math.floor(diffMin / 60);
     const diffD   = Math.floor(diffH   / 24);
@@ -271,8 +273,9 @@ document.addEventListener("DOMContentLoaded", async function () {
     else if (diffD   < 7)   label = diffD === 1 ? "Il y a 1 jour" : `Il y a ${diffD} jours`;
     else if (diffW   < 5)   label = diffW === 1 ? "Il y a 1 semaine" : `Il y a ${diffW} semaines`;
     else                    label = diffM <= 1  ? "Il y a 1 mois"    : `Il y a ${diffM} mois`;
-    setText("#fp-last-activity", label);
-  }
+    const el = document.getElementById("fp-last-activity");
+    if (el) el.textContent = label;
+  })();
 
   // Années d'expérience
   setText("#formateur-xp-years-display", data.years_experience ? `${data.years_experience} ans` : "—");
@@ -528,8 +531,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     card.innerHTML = `
       ${img ? `<img class="fp-article-cover" src="${img}" alt="${title}" />` : `<div class="fp-article-cover"></div>`}
       <div class="fp-article-body">
-        <span class="fp-content-type-badge article">✍️ Article</span>
-        ${isRes ? `<span class="fp-content-type-badge ressource">🔗 Ressource</span>` : ""}
+        <span class="fp-content-type-badge article" style="display:inline-flex;">✍️ Article</span>${isRes ? ` <span class="fp-content-type-badge ressource" style="display:inline-flex;">🔗 Ressource</span>` : ""}
         <div class="fp-article-title">${title}</div>
         <div class="fp-course-meta">
           <span class="fp-meta-badge">⏱ ${tempsMin} min</span>
