@@ -53,18 +53,13 @@ document.addEventListener("DOMContentLoaded", async function () {
       el.classList.add("fp-sk-hidden");
       const sk = document.createElement("span");
       sk.className = "fp-sk";
-      sk.style.cssText = "width:80px;height:14px;display:inline-block;border-radius:6px;";
+      sk.style.cssText = "width:80px;height:14px;display:inline-block;border-radius:6px;visibility:visible;";
       el.insertAdjacentElement("beforebegin", sk);
       el._sk = sk;
     });
     const photo = $("#freelance-profile-img");
     if (photo) {
       photo.classList.add("fp-sk-hidden");
-      const skPhoto = document.createElement("div");
-      skPhoto.className = "fp-sk";
-      skPhoto.style.cssText = "width:120px;height:120px;border-radius:16px;display:block;";
-      photo.insertAdjacentElement("beforebegin", skPhoto);
-      photo._sk = skPhoto;
     }
   }
 
