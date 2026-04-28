@@ -731,5 +731,31 @@ document.addEventListener('DOMContentLoaded', function() {
   updateAuthUI();
 });
 
+/* ─── PATCH BOUTON : remplace le texte par un état loading propre ────────── */
+(function () {
+  document.addEventListener('DOMContentLoaded', function () {
+    const form = document.getElementById('loginForm-Xano');
+    if (!form) return;
+ 
+    const submitBtn = form.querySelector('[type="submit"]') || form.querySelector('button');
+    if (!submitBtn) return;
+ 
+    const originalText = submitBtn.textContent.trim();
+ 
+    // Override du comportement du script existant
+    // On patch en observant disabled pour déclencher l'animation
+    const observer = new MutationObserver(function () {
+      if (submitBtn.disabled) {
+        submitBtn.textContent = 'Connexion en cours…';
+        submitBtn.classList.add('dr-btn-loading');
+      } else {
+        submitBtn.textContent = originalText;
+        submitBtn.classList.remove('dr-btn-loading');
+      }
+    });
+ 
+    observer.observe(submitBtn, { attributes: true, attributeFilter: ['disabled'] });
+  });
+})();
 
 
