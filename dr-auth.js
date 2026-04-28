@@ -592,170 +592,109 @@ DR.Session.init();
 
 <!-- Gère le système de conexion -->
 
-document.addEventListener('DOMContentLoaded', function() {
-
-  // === Sélecteurs ===
-  const form          = document.getElementById('loginForm-Xano');
+document.addEventListener('DOMContentLoaded', function () {
+ 
   const emailInput    = document.getElementById('email-Xano');
   const passwordInput = document.getElementById('password-Xano');
   const messageBox    = document.getElementById('loginMessage-Xano');
-  const submitButton  = form ? (form.querySelector('[type="submit"]') || form.querySelector('button')) : null;
-
-  const LOGIN_URL  = 'https://xmot-l3ir-7kuj.p7.xano.io/api:iEppGvhy/auth/login';
-  const RESEND_URL = 'https://xmot-l3ir-7kuj.p7.xano.io/api:iEppGvhy/auth_resend_from_login';
+  const submitButton  = document.getElementById('login-submit-btn');
+  const form          = document.getElementById('loginForm-Xano');
+ 
+  const LOGIN_URL            = 'https://xmot-l3ir-7kuj.p7.xano.io/api:iEppGvhy/auth/login';
   const REDIRECT_AFTER_LOGIN = 'https://www.digitools-room.com/oauth/mes-cours';
-
-  if (!form || !emailInput || !passwordInput || !messageBox) return;
-
-  // --- UI helpers ---
-  function setMsg(text, variant){
-    messageBox.classList.remove('is-success','is-warn','is-error');
+ 
+  if (!emailInput || !passwordInput || !messageBox || !submitButton) return;
+ 
+  const SPINNER = '<svg style="display:inline-block;vertical-align:middle;margin-left:8px;animation:dr-spin 0.7s linear infinite" width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.3)" stroke-width="3"/><path d="M12 2a10 10 0 0 1 10 10" stroke="white" stroke-width="3" stroke-linecap="round"/></svg>';
+  const originalHTML = submitButton.innerHTML;
+ 
+  function setLoading(on) {
+    if (on) {
+      submitButton.classList.add('is-loading');
+      submitButton.innerHTML = 'Connexion ' + SPINNER;
+    } else {
+      submitButton.classList.remove('is-loading');
+      submitButton.innerHTML = originalHTML;
+    }
+  }
+ 
+  function setMsg(text, variant) {
+    messageBox.classList.remove('is-success', 'is-warn', 'is-error');
     if (variant) messageBox.classList.add(variant);
-    messageBox.innerHTML = text ? `<span>${text}</span>` : '';
+    messageBox.innerHTML = text ? '<span>' + text + '</span>' : '';
   }
-
-  // Fonction UI Auth
-  function updateAuthUI() {
-    const auth = JSON.parse(localStorage.getItem("auth") || "null");
-    const isLogged = !!auth?.token;
-
-    document.body.classList.remove("auth-in","auth-out","auth-booting");
-    document.body.classList.add(isLogged ? "auth-in" : "auth-out");
-
-    const icon = document.getElementById("navbarProfileIcon");
-    if (icon) icon.style.display = isLogged ? "flex" : "none";
-
-    const avatarEls = document.querySelectorAll(".avatar-img");
-    const avatarUrl = auth?.user?.avatar_url || auth?.user?.profile_picture || null;
-
-    avatarEls.forEach(el => {
-      if (isLogged && avatarUrl) {
-        el.src = avatarUrl;
-        el.style.display = "block";
-      } else {
-        el.style.display = "none";
-      }
-    });
-  }
-
-  // --- SUBMIT LOGIN ---
-  form.addEventListener('submit', async function(event){
-    event.preventDefault();
-
+ 
+  submitButton.addEventListener('click', async function (e) {
+    e.preventDefault();
+ 
     const email    = (emailInput.value || '').trim();
     const password = passwordInput.value || '';
-    const stayHere = form.hasAttribute("data-stay-here");
-
+    const stayHere = form?.hasAttribute('data-stay-here');
+ 
     setMsg('', null);
-    if (submitButton) { submitButton.disabled = true; submitButton.innerText = "Veuillez patienter..."; }
-
-    try{
+ 
+    if (!email)    { setMsg('Veuillez saisir votre email.', 'is-error'); return; }
+    if (!password) { setMsg('Veuillez saisir votre mot de passe.', 'is-error'); return; }
+ 
+    setLoading(true);
+ 
+    try {
       const res = await fetch(LOGIN_URL, {
-        method:'POST',
-        headers:{ 'Content-Type':'application/json' },
-        body: JSON.stringify({ email, password })
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ email, password })
       });
-
+ 
       let data = null;
       try { data = await res.json(); } catch {}
-
-      // LOGIN OK
+ 
       if (res.ok && (data?.authToken || data?.token)) {
-
-        if (data?.newSessionId) {
-          localStorage.setItem("session_id", data.newSessionId);
-        }
-
-        const token = data.authToken || data.token;
-
+        if (data?.newSessionId) localStorage.setItem('session_id', data.newSessionId);
+ 
         localStorage.setItem('auth', JSON.stringify({
-          token,
+          token: data.authToken || data.token,
           user: null,
           fetchedAt: Date.now()
         }));
-
+ 
         try { if (window.DR?.Session?.refresh) await DR.Session.refresh({ force: true }); } catch {}
-
-        updateAuthUI();
-
+ 
+        // Cas popup (data-stay-here)
         if (stayHere) {
-          setMsg("Connexion réussie ✅", "is-success");
-          const popup = document.querySelector(".add-resource-nonco-container");
-          if (popup) popup.style.display = "none";
-          submitButton.disabled = false;
-          submitButton.innerText = "Se connecter";
+          setMsg('Connexion réussie ✅', 'is-success');
+          const popup = document.querySelector('.add-resource-nonco-container');
+          if (popup) popup.style.display = 'none';
+          setLoading(false);
           return;
         }
-
+ 
         window.location.href = REDIRECT_AFTER_LOGIN;
         return;
       }
-
-      // ❌ erreurs
+ 
       switch (data?.status) {
-
         case 'google-oauth':
-          setMsg(
-            "Ce compte a été créé avec Google. Cliquez sur « Continuer avec Google » pour vous connecter.",
-            'is-warn'
-          );
+          setMsg("Ce compte a été créé avec Google. Cliquez sur « Continuer avec Google » pour vous connecter.", 'is-warn');
           break;
-
         case 'user-not-found':
           setMsg("Aucun compte trouvé avec cet email.", 'is-error');
           break;
-
         case 'invalid-password':
           setMsg("Mot de passe incorrect.", 'is-error');
           break;
-
         case 'account-not-verified':
           setMsg("Votre compte n'est pas encore vérifié.", 'is-warn');
           break;
-
         default:
           setMsg(data?.message || "Impossible de vous connecter.", 'is-error');
       }
-
-    } catch(err){
+ 
+    } catch (err) {
       setMsg("Erreur réseau. Réessayez.", 'is-error');
-
     } finally {
-      if (submitButton) {
-        submitButton.disabled = false;
-        submitButton.innerText = "Se connecter";
-      }
+      setLoading(false);
     }
   });
-
-  updateAuthUI();
 });
-
-/* ─── PATCH BOUTON : remplace le texte par un état loading propre ────────── */
-(function () {
-  document.addEventListener('DOMContentLoaded', function () {
-    const form = document.getElementById('loginForm-Xano');
-    if (!form) return;
- 
-    const submitBtn = form.querySelector('[type="submit"]') || form.querySelector('button');
-    if (!submitBtn) return;
- 
-    const originalText = submitBtn.textContent.trim();
- 
-    // Override du comportement du script existant
-    // On patch en observant disabled pour déclencher l'animation
-    const observer = new MutationObserver(function () {
-      if (submitBtn.disabled) {
-        submitBtn.textContent = 'Connexion en cours…';
-        submitBtn.classList.add('dr-btn-loading');
-      } else {
-        submitBtn.textContent = originalText;
-        submitBtn.classList.remove('dr-btn-loading');
-      }
-    });
- 
-    observer.observe(submitBtn, { attributes: true, attributeFilter: ['disabled'] });
-  });
-})();
 
 
