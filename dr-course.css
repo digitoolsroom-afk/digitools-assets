@@ -839,6 +839,49 @@
 .pub-card-title { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 
 
+@media (max-width: 700px) {
 
+  /* ── Aperçu en direct — caché sur mobile ── */
+  .formation-right { display: none !important; }
+
+  /* ── Step 1 : 1 colonne ── */
+  #step1-root.is-visible {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* ── Cards formations : layout vertical ── */
+  .pub-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pub-card-cover {
+    width: 100% !important;
+    height: 160px;
+    min-height: 160px;
+  }
+
+  .pub-card-cover img {
+    height: 160px;
+  }
+
+  .pub-cover-placeholder {
+    min-height: 160px;
+    height: 160px;
+  }
+
+  .pub-card-info {
+    padding: 14px 16px;
+  }
+
+  .pub-card-actions {
+    padding: 0 16px 14px;
+    justify-content: flex-end;
+  }
+
+  .pub-root {
+    padding: 16px 0 32px;
+  }
+}
 
 
