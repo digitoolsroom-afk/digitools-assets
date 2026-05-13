@@ -22,14 +22,7 @@
   var _allPostsLoaded  = false;
 
   /* Couleurs pour avatars générés */
-  var AVATAR_COLORS = [
-    '#2563eb','#7c3aed','#db2777','#059669','#d97706',
-    '#dc2626','#0891b2','#65a30d','#9333ea','#ea580c'
-  ];
-
-  function randomColor() {
-    return AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
-  }
+  var AVATAR_STYLE = 'background:#EFF6FF;border:1.5px solid #BFDBFE;color:#2563eb;';
 
   function randomLetter() {
     return 'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.floor(Math.random() * 23)];
@@ -131,9 +124,8 @@
 
     /* Compléter avec des générés */
     while (shown < target) {
-      var color  = randomColor();
       var letter = randomLetter();
-      html += '<div class="' + genCls + '" style="background:' + color + ';">' + letter + '</div>';
+      html += '<div class="' + genCls + '" style="' + AVATAR_STYLE + '">' + letter + '</div>';
       shown++;
     }
 
@@ -144,11 +136,11 @@
   function buildCommentAvatar(user, cls) {
     cls = cls || 'rf-comment-avatar';
     if (user && user.avatar_url) {
-      return '<img class="' + cls + '" src="' + user.avatar_url + '" alt="" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\';" />' +
-             '<div class="rf-comment-avatar-gen" style="display:none;background:' + randomColor() + ';">' + (user.first_name || '?')[0].toUpperCase() + '</div>';
+      return '<img class="' + cls + '" src="' + user.avatar_url + '" alt="" />';
     }
-    var name = (user && (user.first_name || '') + (user.name || '')) || '?';
-    return '<div class="rf-comment-avatar-gen" style="background:' + randomColor() + ';">' + name[0].toUpperCase() + '</div>';
+    var name   = (user && ((user.first_name || '') + (user.name || ''))) || '?';
+    var letter = name[0].toUpperCase();
+    return '<div class="rf-comment-avatar-gen" style="' + AVATAR_STYLE + '">' + letter + '</div>';
   }
 
   /* ============================================================
@@ -218,10 +210,12 @@
   function renderFreelance() {
     var fl = _roomData.freelance_profile || {};
 
-    var avatar = document.getElementById('rf-fl-avatar');
+    var avatar   = document.getElementById('rf-fl-avatar');
     var fallback = document.getElementById('rf-fl-avatar-fallback');
+
     if (fl.profile_image_url) {
-      if (avatar) avatar.src = fl.profile_image_url;
+      if (avatar)   { avatar.src = fl.profile_image_url; avatar.style.display = 'block'; }
+      if (fallback)   fallback.style.display = 'none';
     } else {
       if (avatar)   avatar.style.display   = 'none';
       if (fallback) {
@@ -268,9 +262,21 @@
      Structure : [{type:"article"|"course"|"resource", details:{...}}]
      ============================================================ */
   function renderContents(items) {
+    console.log('[RoomFront] Contents reçus:', items);
+
+    if (!Array.isArray(items) || !items.length) {
+      ['rf-grid-articles','rf-grid-formations','rf-grid-ressources'].forEach(function(id){
+        var el = document.getElementById(id);
+        if (el) el.innerHTML = '<div class="rf-empty-tab">Aucun contenu rattaché</div>';
+      });
+      return;
+    }
+
     var articles   = items.filter(function(c){ return c.type === 'article'; });
     var formations = items.filter(function(c){ return c.type === 'course'; });
     var ressources = items.filter(function(c){ return c.type === 'resource'; });
+
+    console.log('[RoomFront] Articles:', articles.length, 'Formations:', formations.length, 'Ressources:', ressources.length);
 
     renderGrid('rf-grid-articles',   articles,   'article');
     renderGrid('rf-grid-formations', formations, 'course');
@@ -510,10 +516,18 @@
   }
 
   function renderCommentInput(postId) {
-    var auth  = getAuth();
-    var myAvatar = auth && auth.user && auth.user.avatar_url
-      ? '<img class="rf-my-avatar" src="' + auth.user.avatar_url + '" alt="" />'
-      : '<div class="rf-my-avatar" style="display:flex;align-items:center;justify-content:center;background:' + randomColor() + ';font-size:.7rem;font-weight:700;color:#fff;">' + randomLetter() + '</div>';
+    var auth     = getAuth();
+    var user     = auth && auth.user;
+    var myAvatar = '';
+
+    if (user && user.avatar_url) {
+      myAvatar = '<img class="rf-my-avatar" src="' + user.avatar_url + '" alt="" />';
+    } else {
+      var letter = user && user.first_name
+        ? user.first_name[0].toUpperCase()
+        : randomLetter();
+      myAvatar = '<div class="rf-my-avatar" style="display:flex;align-items:center;justify-content:center;' + AVATAR_STYLE + 'font-size:.7rem;font-weight:700;">' + letter + '</div>';
+    }
 
     return '<div class="rf-comment-input-wrap">' +
       myAvatar +
@@ -527,10 +541,16 @@
      ============================================================ */
   function renderWebinar() {
     var webinar = _roomData.last_webinar;
-    var card = document.getElementById('rf-webinar-card');
+    var card    = document.getElementById('rf-webinar-card');
 
-    if (!webinar || !webinar.id) return;
-    if (card) card.style.display = 'block';
+    /* Vérification robuste — id peut être string ou number */
+    if (!webinar || !webinar.id) {
+      console.log('[RoomFront] Pas de webinar dans last_webinar:', webinar);
+      return;
+    }
+
+    /* Afficher la card */
+    if (card) { card.style.display = 'block'; card.style.removeProperty('display'); card.style.display = 'block'; }
 
     var now      = Date.now();
     var upcoming = webinar.scheduled_at > now;
