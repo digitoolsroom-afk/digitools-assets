@@ -883,7 +883,7 @@
             if (!content.trim()) return;
             inlineBtn.disabled = true; inlineBtn.textContent = '…';
             try {
-              var body = { post_id: parseInt(postId), content: content };
+              var body = { post_id: parseInt(postId), content: content, room_id: _roomId || 0 };
               if (parentId)       body.parent_id        = parseInt(parentId);
               if (responseUserId) body.response_user_id = parseInt(responseUserId);
               await fetch(BASE_URL + '/create_comment_post', {
@@ -915,7 +915,7 @@
         btn.textContent = '…';
 
         try {
-          var body = { post_id: parseInt(postId), content: content };
+          var body = { post_id: parseInt(postId), content: content, room_id: _roomId || 0 };
           if (parentId)       body.parent_id         = parseInt(parentId);
           if (responseUserId) body.response_user_id  = parseInt(responseUserId);
 
