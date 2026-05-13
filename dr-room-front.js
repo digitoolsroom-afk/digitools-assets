@@ -283,6 +283,23 @@
     renderGrid('rf-grid-ressources', ressources, 'resource');
   }
 
+  function renderResourceMeta(d, type) {
+    var badges = '';
+    if (type === 'article' && d.temps_lecture_secondes) {
+      badges += '<span class="rf-resource-meta-badge">⏱ ' + Math.ceil(d.temps_lecture_secondes / 60) + ' min</span>';
+    }
+    if (type === 'article' && d.nb_view) {
+      badges += '<span class="rf-resource-meta-badge">👁 ' + fmt(d.nb_view) + '</span>';
+    }
+    if (type === 'course' && d.nb_participants) {
+      badges += '<span class="rf-resource-meta-badge">👥 ' + fmt(d.nb_participants) + '</span>';
+    }
+    if (d.average_notation > 0 && d.nb_notation > 0) {
+      badges += '<span class="rf-resource-rating">★ ' + Number(d.average_notation).toFixed(1) + '</span>';
+    }
+    return badges ? '<div class="rf-resource-meta">' + badges + '</div>' : '';
+  }
+
   function renderGrid(gridId, items, type) {
     var grid = document.getElementById(gridId);
     if (!grid) return;
@@ -316,6 +333,7 @@
         '<div class="rf-resource-body">' +
           '<span class="rf-content-badge ' + type + '">' + labels[type] + '</span>' +
           '<div class="rf-resource-title">' + title + '</div>' +
+          renderResourceMeta(d, type) +
         '</div>' +
       '</a>';
     }).join('');
@@ -409,6 +427,7 @@
       commentPreview +
       commentsFull +
       renderCommentInput(d.id, '', '', '') +
+      '<div class="rf-post-separator"></div>' +
     '</div>';
   }
 
@@ -793,38 +812,88 @@
       });
     });
 
-    /* Répondre à un commentaire ou sous-commentaire */
+    /* Répondre — ouvre un mini input inline sous le commentaire (style Facebook) */
     container.querySelectorAll('.rf-comment-reply-btn').forEach(function (btn) {
       btn.addEventListener('click', function () {
         var postId           = btn.dataset.postId;
-        var parentId         = btn.dataset.parentId       || '';
-        var responseUserId   = btn.dataset.responseUserId || '';
+        var parentId         = btn.dataset.parentId         || '';
+        var responseUserId   = btn.dataset.responseUserId   || '';
         var responseUserName = btn.dataset.responseUserName || '';
 
-        /* Ouvrir les commentaires */
+        /* Ouvrir la section commentaires du post */
         var full = document.getElementById('rf-comments-' + postId);
         if (full) full.classList.add('open');
 
-        /* Mettre à jour le submit */
-        var submit = container.querySelector('.rf-comment-submit[data-post-id="' + postId + '"]');
-        if (submit) {
-          submit.dataset.parentId       = parentId;
-          submit.dataset.responseUserId = responseUserId;
-        }
-
-        /* Focus input */
-        var input = document.getElementById('rf-input-' + postId + '-0');
-        if (input) {
-          input.focus();
-          input.placeholder = responseUserName
-            ? 'Répondre à ' + responseUserName + '…'
-            : 'Répondre au commentaire…';
-        }
-
-        /* Afficher les sous-commentaires du parent si masqués */
+        /* Afficher sous-commentaires si masqués */
         if (parentId) {
           var subs = document.getElementById('rf-subs-' + parentId);
           if (subs) { subs.style.display = 'flex'; subs.style.flexDirection = 'column'; subs.style.gap = '10px'; }
+        }
+
+        /* Supprimer l'éventuel input inline déjà ouvert */
+        var existingInline = container.querySelector('.rf-inline-reply');
+        if (existingInline) existingInline.remove();
+
+        /* Créer un input inline directement sous ce bouton "Répondre" */
+        var auth     = getAuth();
+        var user     = auth && auth.user;
+        var myAvatar = (user && user.avatar_url)
+          ? '<img class="rf-my-avatar" src="' + user.avatar_url + '" alt="" style="width:26px;height:26px;" />'
+          : '<div class="rf-my-avatar" style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;' + AVATAR_STYLE + 'font-size:.65rem;font-weight:700;">' + ((user && user.first_name && user.first_name[0].toUpperCase()) || 'U') + '</div>';
+
+        var inlineWrap = document.createElement('div');
+        inlineWrap.className = 'rf-inline-reply rf-comment-input-wrap';
+        inlineWrap.style.marginTop = '8px';
+        inlineWrap.innerHTML = myAvatar +
+          '<textarea class="rf-comment-input rf-inline-textarea" ' +
+            'placeholder="' + (responseUserName ? '@' + responseUserName + ' ' : '') + '" ' +
+            'rows="1" style="font-size:.8rem;"></textarea>' +
+          '<button class="rf-comment-submit rf-inline-submit" ' +
+            'data-post-id="' + postId + '" ' +
+            'data-parent-id="' + parentId + '" ' +
+            'data-response-user-id="' + responseUserId + '" ' +
+            'style="font-size:.75rem;padding:7px 14px;">Envoyer</button>';
+
+        /* Insérer après le bouton Répondre (dans .rf-comment-actions) */
+        var actionsDiv = btn.closest('.rf-comment-actions');
+        if (actionsDiv) {
+          actionsDiv.parentElement.appendChild(inlineWrap);
+        }
+
+        /* Focus + auto-resize */
+        var ta = inlineWrap.querySelector('.rf-inline-textarea');
+        if (ta) {
+          ta.focus();
+          ta.addEventListener('input', function () {
+            ta.style.height = 'auto';
+            ta.style.height = Math.min(ta.scrollHeight, 80) + 'px';
+          });
+        }
+
+        /* Bind submit de cet input inline */
+        var inlineBtn = inlineWrap.querySelector('.rf-inline-submit');
+        if (inlineBtn) {
+          inlineBtn.addEventListener('click', async function () {
+            if (!requireAuth()) return;
+            var content = ta ? ta.value.trim() : '';
+            /* Ajouter @nom au début si réponse à quelqu'un */
+            if (responseUserName && !content.startsWith('@')) {
+              content = '@' + responseUserName + ' ' + content;
+            }
+            if (!content.trim()) return;
+            inlineBtn.disabled = true; inlineBtn.textContent = '…';
+            try {
+              var body = { post_id: parseInt(postId), content: content };
+              if (parentId)       body.parent_id        = parseInt(parentId);
+              if (responseUserId) body.response_user_id = parseInt(responseUserId);
+              await fetch(BASE_URL + '/create_comment_post', {
+                method: 'POST', headers: getHeaders(true), body: JSON.stringify(body)
+              });
+              inlineWrap.remove();
+              toast('💬 Réponse publiée !');
+            } catch(e) { console.error('[InlineReply]', e); }
+            finally { inlineBtn.textContent = 'Envoyer'; inlineBtn.disabled = false; }
+          });
         }
       });
     });
