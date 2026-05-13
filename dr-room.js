@@ -207,7 +207,7 @@
     renderPosts(posts);
     renderWebinars(webs);
     renderContents(conts);
-    renderNotifs(data.notifications || []);
+    renderNotifs(data);
     injectTooltipButtons();
   }
 
@@ -551,25 +551,51 @@
      4g. RENDER NOTIFS
      ============================================================ */
 
-  function renderNotifs(notifs) {
+  function renderNotifs(data) {
     var list = document.getElementById('rd-notif-list');
     if (!list) return;
 
-    if (!notifs || !notifs.length) {
-      list.innerHTML = '<div class="rd-empty" style="padding:12px 0;"><div class="rd-empty-icon">🔕</div>Aucune activité récente</div>';
+    /* Fusionner les 3 types et trier par date décroissante */
+    var all = [];
+
+    (data.notif_follower || []).forEach(function(n) {
+      all.push({ type: 'follow', created_at: n.created_at, data: n });
+    });
+    (data.notif_webinar || []).forEach(function(n) {
+      all.push({ type: 'webinar', created_at: n.created_at, data: n });
+    });
+    (data.notif_comment || []).forEach(function(n) {
+      all.push({ type: 'comment', created_at: n.created_at, data: n });
+    });
+
+    all.sort(function(a, b) { return b.created_at - a.created_at; });
+
+    if (!all.length) {
+      list.innerHTML = '<div class="rd-empty" style="padding:12px 0;"><div class="rd-empty-icon">🔕</div>Aucune activité ces 7 derniers jours</div>';
       return;
     }
 
-    var icons = { follow: '👥', like: '❤️', comment: '💬', webinar: '🎓' };
-
-    list.innerHTML = notifs.map(function (n) {
+    list.innerHTML = all.map(function(n) {
+      var icon, msg, detail = '';
+      if (n.type === 'follow') {
+        icon = '👥';
+        msg  = 'Nouveau follower sur votre room';
+      } else if (n.type === 'webinar') {
+        icon = '🎓';
+        msg  = 'Inscription à votre webinaire';
+      } else {
+        icon = '💬';
+        msg  = 'Nouveau commentaire';
+        if (n.data.content) {
+          detail = '<div style="font-size:.7rem;color:#6b7280;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px;">"' + n.data.content.substring(0, 60) + (n.data.content.length > 60 ? '…' : '') + '"</div>';
+        }
+      }
       return '<div class="rd-notif-item">' +
-        '<div class="rd-notif-icon">' + (icons[n.type] || '🔔') + '</div>' +
+        '<div class="rd-notif-icon">' + icon + '</div>' +
         '<div class="rd-notif-text">' +
-          (n.message || '—') +
+          msg + detail +
           '<div class="rd-notif-time">' + timeAgo(n.created_at) + '</div>' +
         '</div>' +
-        (n.unread ? '<div class="rd-notif-dot"></div>' : '') +
       '</div>';
     }).join('');
   }
@@ -584,6 +610,17 @@
   var _ogData = { url: '', title: '', image: '', domain: '' };
 
   function initComposer() {
+    /* Bind rich text toolbar buttons */
+    document.querySelectorAll('.rd-rt-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var cmd = btn.dataset.cmd;
+        if (!cmd) return;
+        document.execCommand(cmd, false, null);
+        var ed = document.getElementById('rd-post-content');
+        if (ed) ed.focus();
+      });
+    });
+
     document.querySelectorAll('.rd-composer-tab').forEach(function (tab) {
       tab.addEventListener('click', function () {
         document.querySelectorAll('.rd-composer-tab').forEach(function (t) { t.classList.remove('active'); });
@@ -662,7 +699,8 @@
     var og = document.getElementById('rd-og-preview');
     if (og) og.classList.remove('visible');
 
-    if (_currentPostType === 'link' && urlZone) urlZone.classList.add('visible');
+    if (_currentPostType === 'link'     && urlZone)    urlZone.classList.add('visible');
+    if (_currentPostType === 'video'    && urlZone)    urlZone.classList.add('visible');
     if ((_currentPostType === 'resource' || _currentPostType === 'webinar') && attachZone) {
       attachZone.classList.add('visible');
       populateAttachSelect(_currentPostType); /* async — pas besoin d'await ici */
@@ -739,7 +777,10 @@
   }
 
   async function publishPost() {
-    var content = (document.getElementById('rd-post-content') || {}).value || '';
+    var rtEditor = document.getElementById('rd-post-content');
+    var content = rtEditor ? rtEditor.innerHTML.trim() : '';
+    /* Nettoyage : si juste <br> ou vide */ 
+    if (content === '<br>' || content === '') content = '';
     if (!content.trim()) { showToast('❌ Le contenu du post est vide.'); return; }
 
     var btn = document.getElementById('rd-btn-publish');
@@ -748,7 +789,7 @@
     var body = {
       content:     content.trim(),
       post_type:   _currentPostType,
-      article_url: _currentPostType === 'link' ? (_ogData.url || (document.getElementById('rd-url-input') || {}).value || '') : '',
+      article_url: (_currentPostType === 'link' || _currentPostType === 'video') ? (_ogData.url || (document.getElementById('rd-url-input') || {}).value || '') : '',
       course_url:  '',
       resource_id: _currentPostType === 'resource' ? (parseInt(_currentAttachId) || null) : null,
       webinar_id:  _currentPostType === 'webinar'  ? (parseInt(_currentAttachId) || null) : null
@@ -855,8 +896,11 @@
       editBtn.addEventListener('click', function () {
         if (!_roomData) return;
         var room = _roomData.room_details || {};
-        setVal('rd-edit-room-title', room.title       || '');
-        setVal('rd-edit-room-desc',  room.description || '');
+        setVal('rd-edit-room-title',  room.title       || '');
+        setVal('rd-edit-room-header', room.header      || '');
+        /* Description rich text */
+        var descEd = document.getElementById('rd-edit-room-desc');
+        if (descEd) descEd.innerHTML = room.description || '';
         setVal('rd-banner-url', '');
         var status  = document.getElementById('rd-banner-status');
         var preview = document.getElementById('rd-banner-preview');
@@ -880,7 +924,7 @@
       var desc     = (document.getElementById('rd-edit-room-desc')  || {}).value || '';
       var coverUrl = (document.getElementById('rd-banner-url')      || {}).value || '';
       if (!title.trim()) { showError('rd-edit-room-error', 'Le titre est obligatoire.'); return; }
-      var body = { title: title, description: desc };
+      var body = { title: title, description: desc, header: header };
       if (coverUrl) body.cover_url = coverUrl;
       saveBtn.textContent = 'Enregistrement…'; saveBtn.disabled = true;
       try {
