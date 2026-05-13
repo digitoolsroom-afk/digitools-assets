@@ -408,7 +408,7 @@
       '</div>' +
       commentPreview +
       commentsFull +
-      renderCommentInput(d.id) +
+      renderCommentInput(d.id, '', '', '') +
     '</div>';
   }
 
@@ -459,7 +459,9 @@
 
   /* ---- Commentaires full (masqués, style Facebook) ---- */
   function renderCommentsFull(postId, comments) {
-    if (!comments || !comments.length) return '<div class="rf-comments-full" id="rf-comments-' + postId + '"></div>';
+    if (!comments || !comments.length) {
+      return '<div class="rf-comments-full" id="rf-comments-' + postId + '"></div>';
+    }
 
     var html = comments.map(function (c) {
       var pc   = c.parent_comment || {};
@@ -470,33 +472,44 @@
       /* Sous-commentaires */
       var subsHtml = '';
       if (subs.length) {
-        subsHtml = '<div class="rf-subcomments" id="rf-subs-' + pc.id + '" style="display:none;">' +
-          subs.map(function (s) {
-            var su    = s._user || {};
-            var sName = ((su.first_name || '') + ' ' + (su.name || '')).trim() || 'Utilisateur';
-            var mention = s.replied_to_user_id
-              ? '<span class="rf-comment-mention">@' + sName + '</span> '
-              : '';
-            return '<div class="rf-comment-preview">' +
-              buildCommentAvatar(su, 'rf-comment-avatar') +
-              '<div class="rf-comment-body-wrap">' +
-                '<div class="rf-comment-author-row">' +
-                  '<span class="rf-comment-author">' + sName + '</span>' +
-                  '<span class="rf-comment-time">' + timeAgo(s.created_at) + '</span>' +
-                '</div>' +
-                '<div class="rf-comment-text">' + mention + (s.content || '') + '</div>' +
+        var subsContent = subs.map(function (s) {
+          var su    = s._user || {};
+          var sName = ((su.first_name || '') + ' ' + (su.name || '')).trim() || 'Utilisateur';
+          var mention = s.replied_to_user_id
+            ? '<span class="rf-comment-mention">@' + sName + ' </span>'
+            : '';
+          return '<div class="rf-comment-preview" style="margin-bottom:10px;">' +
+            buildCommentAvatar(su, 'rf-comment-avatar') +
+            '<div class="rf-comment-body-wrap">' +
+              '<div class="rf-comment-author-row">' +
+                '<span class="rf-comment-author">' + sName + '</span>' +
+                '<span class="rf-comment-time">' + timeAgo(s.created_at) + '</span>' +
               '</div>' +
-            '</div>';
-          }).join('') +
-        '</div>';
+              '<div class="rf-comment-text">' + mention + (s.content || '') + '</div>' +
+              '<div class="rf-comment-actions">' +
+                /* Répondre à un sous-commentaire → parent_id = commentaire racine, response_user_id = user du sous-commentaire */
+                '<button class="rf-comment-reply-btn" ' +
+                  'data-post-id="' + postId + '" ' +
+                  'data-parent-id="' + pc.id + '" ' +
+                  'data-response-user-id="' + (su.id || '') + '" ' +
+                  'data-response-user-name="' + sName + '">' +
+                  'Répondre' +
+                '</button>' +
+              '</div>' +
+            '</div>' +
+          '</div>';
+        }).join('');
 
-        /* Bouton voir sous-commentaires */
-        subsHtml = '<button class="rf-see-comments" style="margin-left:38px;font-size:.72rem;" data-toggle-subs="rf-subs-' + pc.id + '">' +
-          'Voir ' + subs.length + ' réponse' + (subs.length > 1 ? 's' : '') +
-        '</button>' + subsHtml;
+        subsHtml =
+          '<button class="rf-see-comments" style="margin-left:38px;font-size:.72rem;margin-top:4px;" data-toggle-subs="rf-subs-' + pc.id + '">' +
+            'Voir ' + subs.length + ' réponse' + (subs.length > 1 ? 's' : '') +
+          '</button>' +
+          '<div class="rf-subcomments" id="rf-subs-' + pc.id + '" style="display:none;">' +
+            subsContent +
+          '</div>';
       }
 
-      return '<div class="rf-comment-preview">' +
+      return '<div class="rf-comment-preview" style="margin-bottom:14px;">' +
         buildCommentAvatar(pu, 'rf-comment-avatar') +
         '<div class="rf-comment-body-wrap">' +
           '<div class="rf-comment-author-row">' +
@@ -505,7 +518,14 @@
           '</div>' +
           '<div class="rf-comment-text">' + (pc.content || '') + '</div>' +
           '<div class="rf-comment-actions">' +
-            '<button class="rf-comment-reply-btn" data-post-id="' + postId + '" data-parent-id="' + pc.id + '" data-user-id="' + pu.id + '">Répondre</button>' +
+            /* Répondre à commentaire racine → parent_id = id du commentaire, response_user_id vide */
+            '<button class="rf-comment-reply-btn" ' +
+              'data-post-id="' + postId + '" ' +
+              'data-parent-id="' + pc.id + '" ' +
+              'data-response-user-id="" ' +
+              'data-response-user-name="">' +
+              'Répondre' +
+            '</button>' +
           '</div>' +
           subsHtml +
         '</div>' +
@@ -515,7 +535,7 @@
     return '<div class="rf-comments-full" id="rf-comments-' + postId + '">' + html + '</div>';
   }
 
-  function renderCommentInput(postId) {
+  function renderCommentInput(postId, parentId, responseUserId, responseUserName) {
     var auth     = getAuth();
     var user     = auth && auth.user;
     var myAvatar = '';
@@ -525,14 +545,24 @@
     } else {
       var letter = user && user.first_name
         ? user.first_name[0].toUpperCase()
-        : randomLetter();
+        : 'U';
       myAvatar = '<div class="rf-my-avatar" style="display:flex;align-items:center;justify-content:center;' + AVATAR_STYLE + 'font-size:.7rem;font-weight:700;">' + letter + '</div>';
     }
 
-    return '<div class="rf-comment-input-wrap">' +
+    var placeholder = responseUserName
+      ? 'Répondre à ' + responseUserName + '…'
+      : 'Écrire un commentaire…';
+
+    return '<div class="rf-comment-input-wrap" id="rf-input-wrap-' + postId + '-' + (parentId || '0') + '">' +
       myAvatar +
-      '<textarea class="rf-comment-input" placeholder="Écrire un commentaire…" rows="1" id="rf-input-' + postId + '"></textarea>' +
-      '<button class="rf-comment-submit" data-post-id="' + postId + '" data-parent-id="">Envoyer</button>' +
+      '<textarea class="rf-comment-input" placeholder="' + placeholder + '" rows="1" ' +
+        'id="rf-input-' + postId + '-' + (parentId || '0') + '"></textarea>' +
+      '<button class="rf-comment-submit" ' +
+        'data-post-id="' + postId + '" ' +
+        'data-parent-id="' + (parentId || '') + '" ' +
+        'data-response-user-id="' + (responseUserId || '') + '">' +
+        'Envoyer' +
+      '</button>' +
     '</div>';
   }
 
@@ -763,18 +793,39 @@
       });
     });
 
-    /* Répondre à un commentaire */
+    /* Répondre à un commentaire ou sous-commentaire */
     container.querySelectorAll('.rf-comment-reply-btn').forEach(function (btn) {
       btn.addEventListener('click', function () {
-        var postId   = btn.dataset.postId;
-        var parentId = btn.dataset.parentId;
-        var submit   = container.querySelector('.rf-comment-submit[data-post-id="' + postId + '"]');
-        var input    = document.getElementById('rf-input-' + postId);
-        if (submit) submit.dataset.parentId = parentId;
-        if (input)  { input.focus(); input.placeholder = 'Répondre au commentaire…'; }
-        /* Ouvrir les commentaires si pas ouverts */
+        var postId           = btn.dataset.postId;
+        var parentId         = btn.dataset.parentId       || '';
+        var responseUserId   = btn.dataset.responseUserId || '';
+        var responseUserName = btn.dataset.responseUserName || '';
+
+        /* Ouvrir les commentaires */
         var full = document.getElementById('rf-comments-' + postId);
         if (full) full.classList.add('open');
+
+        /* Mettre à jour le submit */
+        var submit = container.querySelector('.rf-comment-submit[data-post-id="' + postId + '"]');
+        if (submit) {
+          submit.dataset.parentId       = parentId;
+          submit.dataset.responseUserId = responseUserId;
+        }
+
+        /* Focus input */
+        var input = document.getElementById('rf-input-' + postId + '-0');
+        if (input) {
+          input.focus();
+          input.placeholder = responseUserName
+            ? 'Répondre à ' + responseUserName + '…'
+            : 'Répondre au commentaire…';
+        }
+
+        /* Afficher les sous-commentaires du parent si masqués */
+        if (parentId) {
+          var subs = document.getElementById('rf-subs-' + parentId);
+          if (subs) { subs.style.display = 'flex'; subs.style.flexDirection = 'column'; subs.style.gap = '10px'; }
+        }
       });
     });
 
@@ -782,10 +833,13 @@
     container.querySelectorAll('.rf-comment-submit').forEach(function (btn) {
       btn.addEventListener('click', async function () {
         if (!requireAuth()) return;
-        var postId   = btn.dataset.postId;
-        var parentId = btn.dataset.parentId || '';
-        var input    = document.getElementById('rf-input-' + postId);
-        var content  = input ? input.value.trim() : '';
+
+        var postId         = btn.dataset.postId;
+        var parentId       = btn.dataset.parentId       || '';
+        var responseUserId = btn.dataset.responseUserId || '';
+        var inputId        = 'rf-input-' + postId + '-0';
+        var input          = document.getElementById(inputId);
+        var content        = input ? input.value.trim() : '';
         if (!content) return;
 
         btn.disabled    = true;
@@ -793,14 +847,20 @@
 
         try {
           var body = { post_id: parseInt(postId), content: content };
-          if (parentId) body.parent_id = parseInt(parentId);
+          if (parentId)       body.parent_id         = parseInt(parentId);
+          if (responseUserId) body.response_user_id  = parseInt(responseUserId);
 
-          await fetch(BASE_URL + '/room_post_comment', {
+          await fetch(BASE_URL + '/create_comment_post', {
             method: 'POST', headers: getHeaders(true), body: JSON.stringify(body)
           });
 
-          if (input)  { input.value = ''; input.placeholder = 'Écrire un commentaire…'; input.style.height = 'auto'; }
-          if (submit) submit.dataset.parentId = '';
+          if (input) {
+            input.value       = '';
+            input.placeholder = 'Écrire un commentaire…';
+            input.style.height = 'auto';
+          }
+          btn.dataset.parentId       = '';
+          btn.dataset.responseUserId = '';
           toast('💬 Commentaire publié !');
 
         } catch(e) { console.error('[Comment]', e); }
