@@ -379,6 +379,20 @@
      4d. RENDER POSTS
      ============================================================ */
 
+  function renderPostTypeBadge(type) {
+    var map = {
+      text:     { label: '📝 Texte',     bg: '#f3f4f6',  color: '#374151' },
+      link:     { label: '🔗 Lien',      bg: '#eff6ff',  color: '#2563eb' },
+      article:  { label: '🔗 Article',   bg: '#eff6ff',  color: '#2563eb' },
+      formation:{ label: '🎓 Formation', bg: '#eff6ff',  color: '#2563eb' },
+      resource: { label: '📦 Ressource', bg: '#f0fdf4',  color: '#15803d' },
+      webinar:  { label: '🎓 Webinar',   bg: '#dbeafe',  color: '#1d4ed8' },
+      video:    { label: '🎬 Vidéo',     bg: '#fdf4ff',  color: '#7e22ce' },
+    };
+    var t = map[type] || { label: type, bg: '#f3f4f6', color: '#374151' };
+    return '<span style="font-size:.62rem;font-weight:700;padding:2px 8px;border-radius:20px;background:' + t.bg + ';color:' + t.color + ';flex-shrink:0;">' + t.label + '</span>';
+  }
+
   function renderPosts(posts) {
     var list = document.getElementById('rd-posts-list');
     if (!list) return;
@@ -388,6 +402,8 @@
       return;
     }
 
+    /* Trier en décroissant */
+    posts = posts.slice().sort(function(a, b) { return b.created_at - a.created_at; });
     list.innerHTML = posts.map(function (p) {
       var attach = '';
       var url    = p.article_url || p.course_url || '';
@@ -406,6 +422,7 @@
       return '<div class="rd-post-item" data-post-id="' + p.id + '">' +
         '<div class="rd-post-header">' +
           '<div class="rd-post-meta">' + timeAgo(p.created_at) + '</div>' +
+          renderPostTypeBadge(p.post_type) +
           '<div class="rd-post-actions">' +
             '<button class="rd-post-action-btn rd-edit-post-btn" data-id="' + p.id + '" data-content="' + encodeURIComponent(p.content || '') + '">✏️</button>' +
             '<button class="rd-post-action-btn danger rd-delete-post-btn" data-id="' + p.id + '">🗑</button>' +
@@ -529,13 +546,17 @@
 
     var labels = { article: 'Article', course: 'Formation', resource: 'Ressource' };
 
-    list.innerHTML = conts.map(function (c) {
-      var name = c.title || c.title_short || '—';
-      var type = c.content_type || 'article';
+    list.innerHTML = conts.map(function (item) {
+      /* Structure {type, details} OU plat avec content_type */
+      var type  = item.type || item.content_type || 'article';
+      var det   = item.details || item;
+      var name  = det.title || det.title_short || '—';
+      var nameShort = name.length > 35 ? name.substring(0, 35) + '…' : name;
+      var labels2 = { article: 'Article', course: 'Formation', resource: 'Ressource' };
       return '<div class="rd-content-item">' +
-        '<span class="rd-content-type-badge ' + type + '">' + (labels[type] || type) + '</span>' +
-        '<span class="rd-content-name">' + name + '</span>' +
-        '<button class="rd-content-remove" data-id="' + c.id + '">✕</button>' +
+        '<span class="rd-content-type-badge ' + type + '">' + (labels2[type] || type) + '</span>' +
+        '<span class="rd-content-name" title="' + name + '">' + nameShort + '</span>' +
+        '<button class="rd-content-remove" data-id="' + item.id + '">✕</button>' +
       '</div>';
     }).join('');
 
@@ -579,13 +600,19 @@
       var icon, msg, detail = '';
       if (n.type === 'follow') {
         icon = '👥';
-        msg  = 'Nouveau follower sur votre room';
+        var uFollow = n.data._user || {};
+        var nameFollow = ((uFollow.first_name || '') + ' ' + (uFollow.name || '')).trim();
+        msg = (nameFollow || 'Quelqu\'un') + ' suit maintenant votre room';
       } else if (n.type === 'webinar') {
         icon = '🎓';
-        msg  = 'Inscription à votre webinaire';
+        var uWeb = n.data._user || {};
+        var nameWeb = ((uWeb.first_name || '') + ' ' + (uWeb.name || '')).trim();
+        msg = (nameWeb || 'Quelqu\'un') + ' s\'est inscrit à votre webinaire';
       } else {
         icon = '💬';
-        msg  = 'Nouveau commentaire';
+        var uCom = n.data._user || {};
+        var nameCom = ((uCom.first_name || '') + ' ' + (uCom.name || '')).trim();
+        msg = (nameCom || 'Quelqu\'un') + ' a commenté votre post';
         if (n.data.content) {
           detail = '<div style="font-size:.7rem;color:#6b7280;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px;">"' + n.data.content.substring(0, 60) + (n.data.content.length > 60 ? '…' : '') + '"</div>';
         }
