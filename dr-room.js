@@ -234,7 +234,9 @@
   }
 
   function initCreateRoom() {
-    /* Upload bannière création */
+    /* Upload bannière création — ce fichier gère l'upload avec fixUrl
+       Le toggle exemples + fermeture modal sont dans le script inline
+       de room-create-modal.html pour éviter les doubles binds */
     bindUpload(
       'rd-create-banner-file',
       'rd-create-banner-url',
@@ -242,32 +244,6 @@
       'rd-create-banner-preview',
       'rd-create-banner-preview-wrap'
     );
-
-    /* Toggle exemples bannières */
-    var toggleEx   = document.getElementById('rd-toggle-examples');
-    var examplesEl = document.getElementById('rd-banner-examples');
-    if (toggleEx && examplesEl) {
-      toggleEx.addEventListener('click', function () {
-        var visible = examplesEl.classList.toggle('visible');
-        toggleEx.textContent = visible
-          ? '▲ Masquer les exemples'
-          : '👁 Voir des exemples de bannières';
-      });
-    }
-
-    /* Fermeture modal création → réaffiche le marketing */
-    function closeCreateModal() {
-      closeModal('rd-modal-create-room');
-      showMarketing();
-    }
-    var closeBtn  = document.getElementById('rd-modal-create-close');
-    var cancelBtn = document.getElementById('rd-modal-create-cancel');
-    var overlay   = document.getElementById('rd-modal-create-room');
-    if (closeBtn)  closeBtn.addEventListener('click', closeCreateModal);
-    if (cancelBtn) cancelBtn.addEventListener('click', closeCreateModal);
-    if (overlay)   overlay.addEventListener('click', function (e) {
-      if (e.target === overlay) closeCreateModal();
-    });
 
     /* Bouton créer */
     var btn = document.getElementById('rd-btn-create-room-submit');
@@ -481,6 +457,16 @@
         ? '<span class="rd-webinar-badge upcoming">🟢 À venir</span>'
         : '<span class="rd-webinar-badge past">⏸ Passé</span>';
 
+      /* Bouton replay : uniquement si passé ET pas de replay renseigné */
+      var replayBtn = (!upcoming && !w.replay_url)
+        ? '<button class="rd-webinar-btn rd-add-replay-btn" data-id="' + w.id + '" style="background:#eff6ff;color:#2563eb;border-color:#bfdbfe;">+ Ajouter le replay</button>'
+        : '';
+
+      /* Si replay déjà renseigné : afficher un lien */
+      var replayLink = (!upcoming && w.replay_url)
+        ? '<a href="' + w.replay_url + '" target="_blank" style="font-size:.7rem;color:#2563eb;text-decoration:underline;">▶ Voir le replay</a>'
+        : '';
+
       return '<div class="rd-webinar-item">' +
         badge +
         '<div class="rd-webinar-title">' + (w.title || '—') + '</div>' +
@@ -488,15 +474,30 @@
           '<span>📅 ' + fmtDate(w.scheduled_at) + '</span>' +
           '<span>⏱ ' + (w.duration_minutes || '—') + ' min · ' + (w.outi_webinar || '—') + '</span>' +
         '</div>' +
+        (replayLink ? '<div style="margin-bottom:6px;">' + replayLink + '</div>' : '') +
         '<div class="rd-webinar-footer">' +
           '<span class="rd-webinar-registrations">👥 ' + fmt(w.registrations_count) + ' inscrits</span>' +
           '<div class="rd-webinar-actions">' +
+            replayBtn +
             '<button class="rd-webinar-btn rd-edit-webinar-btn" data-id="' + w.id + '">✏️ Modifier</button>' +
             '<button class="rd-webinar-btn danger rd-delete-webinar-btn" data-id="' + w.id + '">🗑</button>' +
           '</div>' +
         '</div>' +
       '</div>';
     }).join('');
+
+    list.querySelectorAll('.rd-add-replay-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var w = (_roomData.room_webinars || []).find(function (x) { return String(x.id) === String(btn.dataset.id); });
+        if (!w) return;
+        openEditWebinar(w);
+        /* Focus sur le champ replay après ouverture */
+        setTimeout(function () {
+          var replayField = document.getElementById('rd-webinar-replay');
+          if (replayField) replayField.focus();
+        }, 200);
+      });
+    });
 
     list.querySelectorAll('.rd-edit-webinar-btn').forEach(function (btn) {
       btn.addEventListener('click', function () {
@@ -664,32 +665,53 @@
     if (_currentPostType === 'link' && urlZone) urlZone.classList.add('visible');
     if ((_currentPostType === 'resource' || _currentPostType === 'webinar') && attachZone) {
       attachZone.classList.add('visible');
-      populateAttachSelect(_currentPostType);
+      populateAttachSelect(_currentPostType); /* async — pas besoin d'await ici */
     }
   }
 
-  function populateAttachSelect(type) {
+  async function populateAttachSelect(type) {
     var select = document.getElementById('rd-attach-select');
-    if (!select || !_roomData) return;
-    select.innerHTML = '<option value="">— Choisir —</option>';
+    if (!select) return;
+    select.innerHTML = '<option value="">⏳ Chargement…</option>';
+    select.disabled = true;
 
-    var items = [];
-    if (type === 'resource') {
-      items = (_roomData.room_contents || []).filter(function (c) { return c.content_type === 'resource'; });
-      items.forEach(function (c) {
-        var o = document.createElement('option');
-        o.value = c.id;
-        o.textContent = c.title_short || c.title || 'Ressource #' + c.id;
-        select.appendChild(o);
-      });
-    } else if (type === 'webinar') {
-      items = _roomData.room_webinars || [];
+    if (type === 'webinar') {
+      select.innerHTML = '<option value="">— Choisir —</option>';
+      select.disabled  = false;
+      var items = _roomData && _roomData.room_webinars || [];
       items.forEach(function (w) {
         var o = document.createElement('option');
         o.value = w.id;
         o.textContent = w.title || 'Webinaire #' + w.id;
         select.appendChild(o);
       });
+      return;
+    }
+
+    /* Pour resource (et article/course si besoin futur) : appel get_content_id */
+    try {
+      var res   = await fetch(BASE_URL + '/get_content_id?content_type=' + type, { headers: getHeaders(true) });
+      var data  = await res.json();
+      var items = Array.isArray(data) ? data : (data.content || []);
+
+      select.innerHTML = '<option value="">— Choisir —</option>';
+      select.disabled  = false;
+
+      if (!items || !items.length) {
+        select.innerHTML = '<option value="" disabled>Aucune ressource publiée</option>';
+        return;
+      }
+
+      items.forEach(function (item) {
+        var o = document.createElement('option');
+        o.value = item.id;
+        o.textContent = item.title || item.title_short || 'Ressource #' + item.id;
+        select.appendChild(o);
+      });
+    } catch (e) {
+      select.innerHTML = '<option value="" disabled>Erreur de chargement</option>';
+      select.disabled  = false;
+      console.error('[populateAttachSelect]', e);
     }
   }
 
