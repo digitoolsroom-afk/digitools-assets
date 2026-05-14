@@ -101,6 +101,27 @@
     if (el) el.classList.remove('active');
   }
 
+  function openConfirmModal(title, message, onConfirm) {
+    var overlay = document.getElementById('rd-modal-confirm');
+    if (!overlay) return;
+    var t = document.getElementById('rd-confirm-title');
+    var m = document.getElementById('rd-confirm-message');
+    var ok  = document.getElementById('rd-confirm-ok');
+    var cancel = document.getElementById('rd-confirm-cancel');
+    if (t) t.textContent = title;
+    if (m) m.innerHTML  = message;
+    overlay.classList.add('active');
+    /* Clone pour vider les anciens listeners */
+    var newOk = ok.cloneNode(true);
+    ok.parentNode.replaceChild(newOk, ok);
+    newOk.addEventListener('click', function () {
+      overlay.classList.remove('active');
+      onConfirm();
+    });
+    if (cancel) cancel.onclick = function () { overlay.classList.remove('active'); };
+    overlay.onclick = function (e) { if (e.target === overlay) overlay.classList.remove('active'); };
+  }
+
   function openPopover(id) {
     var el = document.getElementById(id);
     if (el) el.classList.add('active');
@@ -474,8 +495,9 @@
 
     list.querySelectorAll('.rd-delete-post-btn').forEach(function (btn) {
       btn.addEventListener('click', function () {
-        if (!confirm('Supprimer ce post ?')) return;
-        deletePost(btn.dataset.id);
+        openConfirmModal('Supprimer ce post ?', 'Cette action est irréversible.', function() {
+          deletePost(btn.dataset.id);
+        });
       });
     });
   }
@@ -587,8 +609,9 @@
 
     list.querySelectorAll('.rd-delete-webinar-btn').forEach(function (btn) {
       btn.addEventListener('click', function () {
-        if (!confirm('Supprimer ce webinaire ?')) return;
-        deleteWebinar(btn.dataset.id);
+        openConfirmModal('Supprimer ce webinaire ?', 'Cette action est irréversible.', function() {
+          deleteWebinar(btn.dataset.id);
+        });
       });
     });
   }
@@ -606,26 +629,28 @@
       return;
     }
 
-    var labels = { article: 'Article', course: 'Formation', resource: 'Ressource' };
-
     list.innerHTML = conts.map(function (item) {
-      /* Structure {type, details} OU plat avec content_type */
       var type  = item.type || item.content_type || 'article';
       var det   = item.details || item;
       var name  = det.title || det.title_short || '—';
       var nameShort = name.length > 35 ? name.substring(0, 35) + '…' : name;
+      /* L'id du record room_contents — peut être à la racine ou dans details */
+      var contentId = item.id || det.id || '';
       var labels2 = { article: 'Article', course: 'Formation', resource: 'Ressource' };
       return '<div class="rd-content-item">' +
         '<span class="rd-content-type-badge ' + type + '">' + (labels2[type] || type) + '</span>' +
         '<span class="rd-content-name" title="' + name + '">' + nameShort + '</span>' +
-        '<button class="rd-content-remove" data-id="' + item.id + '">✕</button>' +
+        '<button class="rd-content-remove" data-id="' + contentId + '" data-name="' + nameShort + '">✕</button>' +
       '</div>';
     }).join('');
 
     list.querySelectorAll('.rd-content-remove').forEach(function (btn) {
       btn.addEventListener('click', function () {
-        if (!confirm('Retirer ce contenu de la room ?')) return;
-        removeContent(btn.dataset.id);
+        openConfirmModal(
+          'Retirer ce contenu ?',
+          'Voulez-vous retirer <strong>' + (btn.dataset.name || 'ce contenu') + '</strong> de votre room ?',
+          function () { removeContent(btn.dataset.id); }
+        );
       });
     });
   }
