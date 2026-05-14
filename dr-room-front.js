@@ -22,7 +22,14 @@
   var _allPostsLoaded  = false;
 
   /* Couleurs pour avatars générés */
-  var AVATAR_STYLE = 'background:#EFF6FF;border:1.5px solid #BFDBFE;color:#2563eb;';
+  /* Couleurs Google-style pour avatars générés */
+  var AVATAR_COLORS = ['#1a73e8','#34a853','#ea4335','#fbbc04','#9c27b0','#00bcd4','#ff5722','#607d8b'];
+  var AVATAR_STYLE = ''; /* non utilisé, on utilise AVATAR_COLORS */
+
+  function getAvatarColor(letter) {
+    var idx = (letter || 'A').charCodeAt(0) % AVATAR_COLORS.length;
+    return AVATAR_COLORS[idx];
+  }
 
   function randomLetter() {
     return 'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.floor(Math.random() * 23)];
@@ -125,7 +132,8 @@
     /* Compléter avec des générés */
     while (shown < target) {
       var letter = randomLetter();
-      html += '<div class="' + genCls + '" style="' + AVATAR_STYLE + '">' + letter + '</div>';
+      var color  = getAvatarColor(letter);
+      html += '<div class="' + genCls + '" style="background:' + color + ';">' + letter + '</div>';
       shown++;
     }
 
@@ -140,7 +148,8 @@
     }
     var name   = (user && ((user.first_name || '') + (user.name || ''))) || '?';
     var letter = name[0].toUpperCase();
-    return '<div class="rf-comment-avatar-gen" style="' + AVATAR_STYLE + '">' + letter + '</div>';
+    var color  = getAvatarColor(letter);
+    return '<div class="rf-comment-avatar-gen" style="background:' + color + ';color:#fff;font-weight:500;font-size:.72rem;">' + letter + '</div>';
   }
 
   /* ============================================================
@@ -432,6 +441,17 @@
   }
 
   function renderPostAttachment(d) {
+    /* Type video — player iframe YouTube/Vimeo */
+    if (d.post_type === 'video') {
+      var videoUrl = d.article_url || d.course_url || '';
+      var embedUrl = getVideoEmbedUrl(videoUrl);
+      if (embedUrl) {
+        return '<div style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:12px;margin-bottom:14px;max-width:500px;">' +
+          '<iframe src="' + embedUrl + '" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none;border-radius:12px;" allowfullscreen></iframe>' +
+        '</div>';
+      }
+    }
+
     /* Type webinar — données dans _webinars */
     if (d.post_type === 'webinar' && d._webinars) {
       var w = d._webinars;
@@ -459,9 +479,23 @@
       '</a>';
     }
 
-    /* Type link (article_url ou course_url) */
+    /* Types avec URL — afficher OG si disponible sinon fallback domaine */
     var url = d.article_url || d.course_url || '';
     if (url) {
+      /* OG stocké en base */
+      if (d.og_title || d.og_image) {
+        return '<a class="rf-post-link" href="' + url + '" target="_blank" rel="noopener">' +
+          (d.og_image
+            ? '<img class="rf-post-link-img" src="' + d.og_image + '" alt="" />'
+            : '<div style="font-size:1.4rem;flex-shrink:0;">🔗</div>'
+          ) +
+          '<div class="rf-post-link-info">' +
+            '<div class="rf-post-link-domain">' + (d.og_domain || '') + '</div>' +
+            '<div class="rf-post-link-title">' + (d.og_title || url.substring(0, 60)) + '</div>' +
+          '</div>' +
+        '</a>';
+      }
+      /* Fallback sans OG */
       var domain = '';
       try { domain = new URL(url).hostname.replace('www.', ''); } catch(e){}
       return '<a class="rf-post-link" href="' + url + '" target="_blank" rel="noopener">' +
@@ -474,6 +508,18 @@
     }
 
     return '';
+  }
+
+  /* Extrait l'URL embed depuis une URL YouTube ou Vimeo */
+  function getVideoEmbedUrl(url) {
+    if (!url) return null;
+    /* YouTube */
+    var ytMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+    if (ytMatch) return 'https://www.youtube.com/embed/' + ytMatch[1];
+    /* Vimeo */
+    var vmMatch = url.match(/vimeo\.com\/(?:video\/)?(\d+)/);
+    if (vmMatch) return 'https://player.vimeo.com/video/' + vmMatch[1];
+    return null;
   }
 
   /* ---- Commentaires full (masqués, style Facebook) ---- */
@@ -565,7 +611,7 @@
       var letter = user && user.first_name
         ? user.first_name[0].toUpperCase()
         : 'U';
-      myAvatar = '<div class="rf-my-avatar" style="display:flex;align-items:center;justify-content:center;' + AVATAR_STYLE + 'font-size:.7rem;font-weight:700;">' + letter + '</div>';
+      myAvatar = '<div class="rf-my-avatar" style="display:flex;align-items:center;justify-content:center;background:' + getAvatarColor(letter) + ';color:#fff;font-size:.7rem;font-weight:500;">' + letter + '</div>';
     }
 
     var placeholder = responseUserName
