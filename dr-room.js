@@ -252,10 +252,12 @@
     btn.addEventListener('click', async function () {
       hideError('rd-create-room-error');
 
-      var titleEl = document.getElementById('rd-create-room-title');
-      var descEl  = document.getElementById('rd-create-room-desc');
-      var title   = titleEl ? titleEl.value.trim() : '';
-      var desc    = descEl  ? descEl.value.trim()  : '';
+      var titleEl   = document.getElementById('rd-create-room-title');
+      var headerEl  = document.getElementById('rd-create-room-header');
+      var descEl    = document.getElementById('rd-create-room-desc');
+      var title     = titleEl  ? titleEl.value.trim()   : '';
+      var header    = headerEl ? headerEl.value.trim()  : '';
+      var desc      = descEl   ? descEl.innerHTML.trim() : '';
       var cover_url = (document.getElementById('rd-create-banner-url') || {}).value || '';
 
       /* Validation bloquante */
@@ -264,9 +266,14 @@
         if (titleEl) { titleEl.style.borderColor = '#ef4444'; titleEl.focus(); }
         return;
       }
-      if (!desc) {
+      if (!header) {
+        showError('rd-create-room-error', '⚠️ L\'accroche est obligatoire.');
+        if (headerEl) { headerEl.style.borderColor = '#ef4444'; headerEl.focus(); }
+        return;
+      }
+      if (!desc || desc === '<br>') {
         showError('rd-create-room-error', '⚠️ La description est obligatoire.');
-        if (descEl) { descEl.style.borderColor = '#ef4444'; descEl.focus(); }
+        if (descEl) { descEl.style.outline = '2px solid #ef4444'; descEl.focus(); }
         return;
       }
 
@@ -277,7 +284,7 @@
         var res = await fetch(BASE_URL + '/room_create', {
           method:  'POST',
           headers: getHeaders(true),
-          body:    JSON.stringify({ title: title, description: desc, cover_url: cover_url })
+          body:    JSON.stringify({ title: title, description: desc, cover_url: cover_url, header: header })
         });
         var data = await res.json();
         if (!res.ok) throw new Error(data.message || 'Erreur serveur');
