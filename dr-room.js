@@ -433,9 +433,11 @@
     /* Trier en décroissant */
     posts = posts.slice().sort(function(a, b) { return b.created_at - a.created_at; });
     list.innerHTML = posts.map(function (p) {
-      /* Extrait du contenu — texte brut tronqué */
-      var rawText = (p.content || '').replace(/<[^>]+>/g, '').trim();
-      var excerpt = rawText.length > 80 ? rawText.substring(0, 80) + '…' : rawText;
+      /* Extrait du contenu — texte brut tronqué, nettoie les styles inline Webflow */
+      var tmp = document.createElement('div');
+      tmp.innerHTML = p.content || '';
+      var rawText = (tmp.textContent || tmp.innerText || '').trim();
+      var excerpt = rawText.length > 90 ? rawText.substring(0, 90) + '…' : rawText;
 
       /* Infos attachement */
       var attachInfo = '';
