@@ -112,25 +112,30 @@
    * @param {string} cls     — classe CSS de l'img
    * @param {string} genCls  — classe CSS des générés
    */
-  function buildAvatarStack(items, target, cls, genCls) {
-    target = target || 4;
+  function buildAvatarStack(items, total, cls, genCls) {
+    /* total = nombre réel de followers/inscrits (depuis l'API)
+       On affiche min(total, 4) avatars. Si pas assez de vraies photos → on génère */
+    var MAX    = 4;
+    var count  = Math.min(total || 0, MAX); /* 0→0, 1→1, 2→2, 3→3, 4+→4 */
     cls    = cls    || 'rf-avatar-stack-item';
     genCls = genCls || 'rf-avatar-gen';
 
-    var html = '';
+    if (count === 0) return '';
+
+    var html  = '';
     var shown = 0;
 
-    /* D'abord les vrais avatars */
+    /* D'abord les vraies photos */
     (items || []).forEach(function (f) {
-      if (shown >= target) return;
+      if (shown >= count) return;
       if (f.avatar_url) {
         html += '<img class="' + cls + '" src="' + f.avatar_url + '" alt="" />';
         shown++;
       }
     });
 
-    /* Compléter avec des générés */
-    while (shown < target) {
+    /* Compléter avec des générés si pas assez de vraies photos */
+    while (shown < count) {
       var letter = randomLetter();
       var color  = getAvatarColor(letter);
       html += '<div class="' + genCls + '" style="background:' + color + ';">' + letter + '</div>';
@@ -210,7 +215,7 @@
 
     /* Avatars stack — toujours 4 */
     var stack = document.getElementById('rf-avatar-stack');
-    if (stack) stack.innerHTML = buildAvatarStack(followers, 4, 'rf-avatar-stack-item', 'rf-avatar-gen');
+    if (stack) stack.innerHTML = buildAvatarStack(followers, room.followers_count || 0, 'rf-avatar-stack-item', 'rf-avatar-gen');
   }
 
   /* ============================================================
@@ -429,7 +434,7 @@
       attachment +
       '<div class="rf-post-footer">' +
         '<button class="rf-post-action rf-like-btn ' + likedClass + '" data-post-id="' + d.id + '">' +
-          '<span class="rf-like-icon">' + (_likedPosts[d.id] ? '❤️' : '🤍') + '</span> ' +
+          '<span class="rf-like-icon" style="color:' + (_likedPosts[d.id] ? '#dc2626' : '#ef4444') + ';font-size:.9rem;">♥</span> ' +
           '<span class="rf-like-count">' + fmt(likes) + '</span>' +
         '</button>' +
       '</div>' +
@@ -637,15 +642,18 @@
   function renderWebinar() {
     var webinar = _roomData.last_webinar;
     var card    = document.getElementById('rf-webinar-card');
+    if (card) card.style.display = 'block';
 
-    /* Vérification robuste — id peut être string ou number */
+    /* Pas de webinar — afficher message vide */
     if (!webinar || !webinar.id) {
-      console.log('[RoomFront] Pas de webinar dans last_webinar:', webinar);
+      var visual = document.getElementById('rf-webinar-visual');
+      if (visual) visual.style.display = 'none';
+      var body = document.querySelector('#rf-webinar-card .rf-webinar-body');
+      if (body) body.innerHTML = '<div style="text-align:center;padding:16px 0;color:#9ca3af;font-size:.82rem;">🎓 Aucun webinaire pour le moment</div>';
+      var hdr = document.querySelector('#rf-webinar-card .rf-webinar-card-header .rf-webinar-card-title');
+      if (hdr) hdr.textContent = 'Webinaires';
       return;
     }
-
-    /* Afficher la card */
-    if (card) { card.style.display = 'block'; card.style.removeProperty('display'); card.style.display = 'block'; }
 
     var now      = Date.now();
     var upcoming = webinar.scheduled_at > now;
@@ -670,7 +678,7 @@
     var regAvatars = document.getElementById('rf-webinar-reg-avatars');
     if (regAvatars) {
       var webFollowers = _roomData.webinars_last_followers || [];
-      regAvatars.innerHTML = buildAvatarStack(webFollowers, 4, 'rf-webinar-reg-avatar', 'rf-avatar-gen-sm');
+      regAvatars.innerHTML = buildAvatarStack(webFollowers, webinar.registrations_count || 0, 'rf-webinar-reg-avatar', 'rf-avatar-gen-sm');
     }
 
     /* Bouton */
@@ -810,11 +818,11 @@
           _likedPosts[postId] = !liked;
           if (_likedPosts[postId]) {
             btn.classList.add('liked');
-            if (icon)  icon.textContent  = '❤️';
+            if (icon)  { icon.style.color = '#dc2626'; }
             if (count) count.textContent = fmt((parseInt(count.textContent) || 0) + 1);
           } else {
             btn.classList.remove('liked');
-            if (icon)  icon.textContent  = '🤍';
+            if (icon)  { icon.style.color = '#ef4444'; }
             if (count) count.textContent = fmt(Math.max(0, (parseInt(count.textContent) || 0) - 1));
           }
         } catch(e){ console.error('[Like]', e); }
