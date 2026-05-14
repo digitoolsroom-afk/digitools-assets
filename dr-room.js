@@ -343,7 +343,7 @@
 
   function renderBanner(room) {
     setText('rd-room-title',      room.title       || '—');
-    setText('rd-room-desc',       room.description || '—');
+    setText('rd-room-desc', room.header || room.description || '—');
     setText('rd-followers-count', fmt(room.followers_count || 0));
     setText('rd-posts-count',     fmt(_roomData.room_post_count || 0));
 
@@ -412,37 +412,56 @@
     /* Trier en décroissant */
     posts = posts.slice().sort(function(a, b) { return b.created_at - a.created_at; });
     list.innerHTML = posts.map(function (p) {
-      var attach = '';
-      var url    = p.article_url || p.course_url || '';
-      if (url) {
+      /* Extrait du contenu — texte brut tronqué */
+      var rawText = (p.content || '').replace(/<[^>]+>/g, '').trim();
+      var excerpt = rawText.length > 80 ? rawText.substring(0, 80) + '…' : rawText;
+
+      /* Infos attachement */
+      var attachInfo = '';
+      var url = p.article_url || p.course_url || '';
+      if (p.post_type === 'webinar' && p.webinars_id) {
+        attachInfo = '<span style="font-size:.7rem;color:#6b7280;">📅 Webinaire rattaché</span>';
+      } else if (p.post_type === 'resource' && p.blog_ressources_id) {
+        attachInfo = '<span style="font-size:.7rem;color:#6b7280;">📦 Ressource rattachée</span>';
+      } else if (url) {
         var domain = '';
         try { domain = new URL(url).hostname.replace('www.', ''); } catch(e) {}
-        attach = '<a class="rd-post-attachment" href="' + url + '" target="_blank" rel="noopener">' +
-          '<div style="font-size:1.2rem;flex-shrink:0;">🔗</div>' +
-          '<div style="flex:1;min-width:0;">' +
-            '<div class="rd-post-attach-domain">' + domain + '</div>' +
-            '<div class="rd-post-attach-title">' + url.substring(0, 60) + (url.length > 60 ? '…' : '') + '</div>' +
-          '</div>' +
-        '</a>';
+        attachInfo = '<span style="font-size:.7rem;color:#6b7280;">🔗 ' + domain + '</span>';
       }
 
       return '<div class="rd-post-item" data-post-id="' + p.id + '">' +
         '<div class="rd-post-header">' +
-          '<div class="rd-post-meta">' + timeAgo(p.created_at) + '</div>' +
-          renderPostTypeBadge(p.post_type) +
+          '<div style="display:flex;align-items:center;gap:8px;">' +
+            renderPostTypeBadge(p.post_type) +
+            '<span style="font-size:.7rem;color:#9ca3af;">' + timeAgo(p.created_at) + '</span>' +
+          '</div>' +
           '<div class="rd-post-actions">' +
-            '<button class="rd-post-action-btn rd-edit-post-btn" data-id="' + p.id + '" data-content="' + encodeURIComponent(p.content || '') + '">✏️</button>' +
-            '<button class="rd-post-action-btn danger rd-delete-post-btn" data-id="' + p.id + '">🗑</button>' +
+            '<button class="rd-post-action-btn rd-view-post-btn" data-id="' + p.id + '" title="Voir le post">👁</button>' +
+            '<button class="rd-post-action-btn rd-edit-post-btn" data-id="' + p.id + '" data-content="' + encodeURIComponent(p.content || '') + '" title="Modifier">✏️</button>' +
+            '<button class="rd-post-action-btn danger rd-delete-post-btn" data-id="' + p.id + '" title="Supprimer">🗑</button>' +
           '</div>' +
         '</div>' +
-        '<div class="rd-post-content">' + (p.content || '') + '</div>' +
-        attach +
+        '<div style="font-size:.85rem;color:#374151;line-height:1.5;margin:8px 0 6px;">' + (excerpt || '<em style="color:#9ca3af;">Post sans texte</em>') + '</div>' +
+        (attachInfo ? '<div style="margin-bottom:6px;">' + attachInfo + '</div>' : '') +
         '<div class="rd-post-stats">' +
           '<span class="rd-post-stat">❤️ ' + fmt(p.likes_count) + '</span>' +
           '<span class="rd-post-stat">💬 ' + fmt(p.comments_count) + '</span>' +
         '</div>' +
       '</div>';
     }).join('');
+
+    /* Stocker les posts pour la modal détail */
+    list._posts = posts;
+
+    /* Bouton voir détail */
+    list.querySelectorAll('.rd-view-post-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var postId = parseInt(btn.dataset.id);
+        var p = (list._posts || []).find(function(x){ return x.id === postId; });
+        if (!p) return;
+        openPostDetailModal(p);
+      });
+    });
 
     list.querySelectorAll('.rd-edit-post-btn').forEach(function (btn) {
       btn.addEventListener('click', function () {
@@ -459,6 +478,42 @@
         deletePost(btn.dataset.id);
       });
     });
+  }
+
+  function openPostDetailModal(p) {
+    var overlay = document.getElementById('rd-modal-post-detail');
+    if (!overlay) return;
+    var body = document.getElementById('rd-modal-post-detail-body');
+    if (body) {
+      var url = p.article_url || p.course_url || '';
+      var attachHtml = '';
+      if (url) {
+        var domain = '';
+        try { domain = new URL(url).hostname.replace('www.', ''); } catch(e) {}
+        attachHtml = '<a href="' + url + '" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#f8faff;border:1px solid #e0e7ff;border-radius:10px;margin-top:12px;text-decoration:none;">' +
+          '<span style="font-size:1.2rem;">🔗</span>' +
+          '<div style="flex:1;min-width:0;">' +
+            '<div style="font-size:.7rem;color:#9ca3af;">' + domain + '</div>' +
+            '<div style="font-size:.8rem;font-weight:600;color:#111112;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + url + '</div>' +
+          '</div>' +
+        '</a>';
+      }
+      body.innerHTML =
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">' +
+          renderPostTypeBadge(p.post_type) +
+          '<span style="font-size:.75rem;color:#9ca3af;">' + timeAgo(p.created_at) + '</span>' +
+        '</div>' +
+        '<div style="font-size:.88rem;color:#374151;line-height:1.7;">' + (p.content || '<em>Aucun texte</em>') + '</div>' +
+        attachHtml +
+        '<div style="display:flex;gap:14px;margin-top:16px;padding-top:14px;border-top:1px solid #f1f5f9;">' +
+          '<span style="font-size:.82rem;color:#6b7280;">❤️ ' + fmt(p.likes_count) + ' like' + (p.likes_count > 1 ? 's' : '') + '</span>' +
+          '<span style="font-size:.82rem;color:#6b7280;">💬 ' + fmt(p.comments_count) + ' commentaire' + (p.comments_count > 1 ? 's' : '') + '</span>' +
+        '</div>';
+    }
+    overlay.classList.add('active');
+    var closeBtn = document.getElementById('rd-modal-post-detail-close');
+    if (closeBtn) closeBtn.onclick = function() { overlay.classList.remove('active'); };
+    overlay.onclick = function(e) { if (e.target === overlay) overlay.classList.remove('active'); };
   }
 
   /* ============================================================
@@ -838,7 +893,9 @@
       if (!res.ok) throw new Error('Erreur publication');
 
       showToast('✅ Post publié !');
-      setVal('rd-post-content', '');
+      /* Reset rich text editor (innerHTML, pas value) */
+      var rtEd = document.getElementById('rd-post-content');
+      if (rtEd) rtEd.innerHTML = '';
       setText('rd-char-count', '0 / 500');
       _currentPostType = 'text';
       _currentAttachId = _currentAttachName = null;
