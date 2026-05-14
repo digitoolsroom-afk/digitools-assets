@@ -426,9 +426,11 @@
     if (!list) return;
 
     if (!posts || !posts.length) {
-      list.innerHTML = '<div class="rd-empty"><div class="rd-empty-icon">📭</div>Aucun post pour le moment — publiez votre première actu !</div>';
+      list.innerHTML = '<div class="rd-empty" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:100%;text-align:center;"><div class="rd-empty-icon">📭</div>Aucun post pour le moment — publiez votre première actu !</div>';
+      list.style.position = 'relative';
       return;
     }
+    list.style.position = '';
 
     /* Trier en décroissant */
     posts = posts.slice().sort(function(a, b) { return b.created_at - a.created_at; });
@@ -904,7 +906,7 @@
 
     var body = {
       content:     content.trim(),
-      post_type:   _currentPostType,
+      post_type:   _currentPostType === 'link' ? 'article' : _currentPostType,
       article_url: (_currentPostType === 'link' || _currentPostType === 'video') ? (_ogData.url || (document.getElementById('rd-url-input') || {}).value || '') : '',
       course_url:  '',
       resource_id: _currentPostType === 'resource' ? (parseInt(_currentAttachId) || null) : null,
