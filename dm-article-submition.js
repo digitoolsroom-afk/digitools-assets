@@ -634,7 +634,7 @@
 
 
 /* ============================================================
-   dr-article-list.js
+   dr-article-list.js — redesign
    ============================================================ */
 (function () {
 
@@ -697,7 +697,7 @@
 
     if (mktSection) mktSection.style.display = 'none';
     if (mktTopline) mktTopline.style.display  = 'none';
-    section.style.display = 'block'; // ← CORRECTION : était 'flex', corrigé en 'block'
+    section.style.display = 'block';
 
     renderArticles(articles);
     renderRessources(auth?.freelance?.ressources || []);
@@ -712,11 +712,13 @@
         });
         if (res.ok) {
           const stats = await res.json();
+          renderMetrics(stats);
           renderChart(stats);
           renderNotifications(stats);
         }
       } catch(e) {
         console.error('[Stats]', e);
+        renderMetrics([]);
         renderChart([]);
         renderNotifications([]);
       }
@@ -731,11 +733,23 @@
   });
 
   /* ══════════════════════════════════════
-     ARTICLES
+     ARTICLES — cards visuelles
   ══════════════════════════════════════ */
   function renderArticles(articles) {
     if (!listEl) return;
     listEl.innerHTML = '';
+
+    /* Compteur publiés/brouillons */
+    const pubCount = articles.filter(a => a.status === 'published').length;
+    const dftCount = articles.length - pubCount;
+    const countEl  = document.getElementById('al2-articles-count');
+    if (countEl) countEl.textContent = `${pubCount} publié · ${dftCount} brouillon`;
+
+    if (!articles.length) {
+      listEl.innerHTML = `<div class="al-notif-empty"><span class="al-notif-empty-icon">📄</span>Aucun article publié.</div>`;
+      return;
+    }
+
     articles.forEach(article => {
       const status    = article.status || 'pending';
       const statusCfg = STATUS_LABELS[status] || STATUS_LABELS.pending;
@@ -746,24 +760,35 @@
         ? `<img class="al-article-img" src="${article.url_image}" alt="" />`
         : `<div class="al-article-img-placeholder">📄</div>`;
 
+      const viewBtn = (status === 'published' && article.slug)
+        ? `<a class="al2-act-btn al2-act-btn-view" href="https://www.digitools-room.com/articles-de-blog/${article.slug}" target="_blank">👁️ Voir</a>`
+        : '';
+
       item.innerHTML = `
         ${imgHtml}
+        <div class="al2-article-type">Article</div>
         <div class="al-article-info">
           <p class="al-article-title">${article.title || '—'}</p>
           <div class="al-article-meta">
             <span class="al-badge ${statusCfg.cls}">${statusCfg.label}</span>
-            <span class="al-article-stat">⭐ ${article.average_notation > 0 ? Number(article.average_notation).toFixed(1) : '—'}</span>
             <span class="al-article-stat">⏱️ ${formatDuration(article.temps_lecture_secondes)}</span>
-            <span class="al-article-stat">👁️ ${fmt(article.nb_view)} vues</span>
-            <span class="al-article-stat">💬 ${fmt(article.nb_notation)} avis</span>
+            <span class="al-article-stat">👁️ ${fmt(article.nb_view)}</span>
+            <span class="al-article-stat">💬 ${fmt(article.nb_notation)}</span>
           </div>
         </div>
-        <div class="al-article-actions">
-          ${status === 'published' && article.slug ? `<a class="al-btn-view" href="https://www.digitools-room.com/articles-de-blog/${article.slug}" target="_blank">👁️ Voir →</a>` : ''}
-          <button class="al-btn-edit" data-article-id="${article.id}" data-status="${status}">✏️ Modifier →</button>
+        <div class="al2-article-footer">
+          ${viewBtn}
+          <button class="al2-act-btn al2-act-btn-edit">✏️ Modifier</button>
+          <button class="al2-act-btn al2-act-btn-del">🗑️</button>
         </div>`;
 
-      item.querySelector('.al-btn-edit').addEventListener('click', () => handleEditArticle(article, status));
+      item.querySelector('.al2-act-btn-edit').addEventListener('click', () => handleEditArticle(article, status));
+      item.querySelector('.al2-act-btn-del').addEventListener('click', () => {
+        if (confirm(`Supprimer "${article.title || 'cet article'}" ?`)) {
+          document.dispatchEvent(new CustomEvent('al2-delete-article', { detail: { id: article.id } }));
+        }
+      });
+
       listEl.appendChild(item);
     });
   }
@@ -791,7 +816,7 @@
           <p class="al-res-meta">${res.short_title || ''}</p>
         </div>
         <div class="al-res-actions">
-          <button class="al-btn-edit">✏️ Modifier →</button>
+          <button class="al-btn-edit">✏️ Modifier</button>
         </div>`;
       item.querySelector('.al-btn-edit').addEventListener('click', () => openEditResPopup(res));
       resListEl.appendChild(item);
@@ -799,17 +824,34 @@
   }
 
   /* ══════════════════════════════════════
-     GRAPHIQUE
+     MÉTRIQUES — all time depuis article.*
+  ══════════════════════════════════════ */
+  function renderMetrics(statsData) {
+    let totalViews = 0, totalAvis = 0, totalDownloads = 0;
+    const totalArticles = (statsData || []).length;
+    (statsData || []).forEach(a => {
+      const art = a.article || {};
+      totalViews     += (art.nb_view             || 0);
+      totalAvis      += (art.nb_notation          || 0);
+      totalDownloads += (art.nb_ressource_upload  || 0);
+    });
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = fmt(val); };
+    set('al2-total-views',     totalViews);
+    set('al2-total-avis',      totalAvis);
+    set('al2-total-downloads', totalDownloads);
+    const el = document.getElementById('al2-total-articles');
+    if (el) el.textContent = totalArticles;
+  }
+
+  /* ══════════════════════════════════════
+     GRAPHIQUE — view[] déjà filtrés 7j par Xano
   ══════════════════════════════════════ */
   function renderChart(statsData) {
     const wrap = document.getElementById('al-chart-wrap');
     if (!wrap) return;
     wrap.innerHTML = '';
 
-    const now  = Date.now();
-    const h24  = 24 * 3600 * 1000;
     const articles = statsData || [];
-
     if (articles.length === 0) {
       wrap.innerHTML = '<div class="al-chart-empty">Aucune donnée à afficher.</div>';
       return;
@@ -817,13 +859,13 @@
 
     const data = articles.map(a => ({
       title: a.article?.title || '—',
-      views: (a.view || []).filter(v => (now - v.created_at) <= h24).length,
+      views: (a.view || []).length,  /* déjà filtrés 7j par l'endpoint */
     }));
 
-    const maxViews = Math.max(...data.map(d => d.views));
+    const maxViews = Math.max(...data.map(d => d.views), 1);
 
     data.forEach(d => {
-      const pct = maxViews > 0 ? Math.max((d.views / maxViews) * 80, d.views > 0 ? 6 : 2) : 2;
+      const pct = Math.max((d.views / maxViews) * 80, d.views > 0 ? 6 : 2);
       const col = document.createElement('div');
       col.className = 'al-chart-col';
       col.innerHTML = `
@@ -842,49 +884,42 @@
       ghost.innerHTML = `
         <div class="al-chart-val"></div>
         <div class="al-chart-bar-wrap">
-          <div class="al-chart-bar-ghost" title="Publiez un nouvel article pour augmenter vos vues"></div>
+          <div class="al-chart-bar-ghost"></div>
         </div>
         <div class="al-chart-label">+ Nouvel article</div>`;
       ghost.querySelector('.al-chart-bar-ghost').addEventListener('click', () => {
-        const btn = document.getElementById('al-btn-new-article');
-        if (btn) btn.click();
+        document.getElementById('al-btn-new-article')?.click();
       });
       wrap.appendChild(ghost);
     }
   }
 
   /* ══════════════════════════════════════
-     NOTIFICATIONS
+     NOTIFICATIONS — avis[] et ressource[] déjà filtrés 7j par Xano
   ══════════════════════════════════════ */
   function renderNotifications(statsData) {
-    const notifEl  = document.getElementById('al-notif-list');
-    const badgeEl  = document.getElementById('al-notif-badge');
+    const notifEl = document.getElementById('al-notif-list');
+    const badgeEl = document.getElementById('al-notif-badge');
     if (!notifEl) return;
 
-    const now  = Date.now();
-    const h24  = 24 * 3600 * 1000;
     const items = [];
 
     (statsData || []).forEach(a => {
       const title = a.article?.title || 'votre article';
       (a.avis || []).forEach(av => {
-        if ((now - av.created_at) <= h24) {
-          items.push({
-            icon: '⭐',
-            text: `Nouvelle note <strong>${av.note}/5</strong> sur "<strong>${title}</strong>" — "${av.avis}"`,
-            ts:   av.created_at,
-          });
-        }
+        items.push({
+          icon: '⭐',
+          text: `Nouvelle note <strong>${av.note}/5</strong> sur "<strong>${title}</strong>" — "${av.avis}"`,
+          ts:   av.created_at,
+        });
       });
       (a.ressource || []).forEach(r => {
-        if ((now - r.created_at) <= h24) {
-          const resTitle = r._blog_ressources?.title_short || 'Votre ressource';
-          items.push({
-            icon: '📥',
-            text: `"<strong>${resTitle}</strong>" a été téléchargée (article : <strong>${title}</strong>)`,
-            ts:   r.created_at,
-          });
-        }
+        const resTitle = r._blog_ressources?.title_short || 'Votre ressource';
+        items.push({
+          icon: '📥',
+          text: `"<strong>${resTitle}</strong>" a été téléchargée (article : <strong>${title}</strong>)`,
+          ts:   r.created_at,
+        });
       });
     });
 
@@ -896,7 +931,7 @@
     }
 
     if (items.length === 0) {
-      notifEl.innerHTML = `<div class="al-notif-empty"><span class="al-notif-empty-icon">🔕</span>Aucune nouvelle notification dans les 24 dernières heures.</div>`;
+      notifEl.innerHTML = `<div class="al-notif-empty"><span class="al-notif-empty-icon">🔕</span>Aucune nouvelle notification dans les 7 derniers jours.</div>`;
       return;
     }
 
@@ -1135,7 +1170,7 @@
   ══════════════════════════════════════ */
   function openEditResPopup(res) {
     const popup = document.getElementById('al-edit-res-popup');
-    if (!popup) { console.warn('[openEditResPopup] popup introuvable'); return; }
+    if (!popup) return;
 
     const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
     const txt = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
@@ -1150,8 +1185,8 @@
     const rp  = document.getElementById('al-res-edit-img-preview');
     const rph = document.getElementById('al-res-edit-img-placeholder');
     if (rp && rph) {
-      if (res.url_image) { rp.src = res.url_image; rp.style.display = 'block'; rph.style.display = 'none'; }
-      else               { rp.style.display = 'none'; rph.style.display = 'flex'; }
+      if (res.url_image) { rp.src=res.url_image; rp.style.display='block'; rph.style.display='none'; }
+      else               { rp.style.display='none'; rph.style.display='flex'; }
     }
 
     popup.style.display = 'flex';
@@ -1198,7 +1233,7 @@
   });
 
   /* ══════════════════════════════════════
-     NOUVELLE RESSOURCE INDÉPENDANTE
+     NOUVELLE RESSOURCE
   ══════════════════════════════════════ */
   document.getElementById('al-btn-new-ressource')?.addEventListener('click', () => {
     document.getElementById('al-new-res-standalone-popup').style.display = 'flex';
@@ -1217,7 +1252,6 @@
     const description = document.getElementById('al-new-res-description')?.value?.trim();
     const link        = document.getElementById('al-new-res-link')?.value?.trim();
 
-    // ← CORRECTION : blocage sur url_img supprimé (champ image retiré du HTML)
     if (!title)       { alert('Le titre est obligatoire.'); return; }
     if (!short_title) { alert('Le titre court est obligatoire.'); return; }
     if (!link)        { alert('Le lien de la ressource est obligatoire.'); return; }
@@ -1251,7 +1285,7 @@
   });
 
   /* ══════════════════════════════════════
-     UPLOAD IMAGE (helper)
+     UPLOAD IMAGE
   ══════════════════════════════════════ */
   async function uploadImage(file, statusEl, previewEl, placeholderEl, hiddenEl) {
     if (!file) return;
@@ -1276,17 +1310,13 @@
   ══════════════════════════════════════ */
   document.getElementById('al-btn-new-article')?.addEventListener('click', () => {
     if (formSection) {
-      if (typeof window.resetArticleForm === "function") window.resetArticleForm();
+      if (typeof window.resetArticleForm === 'function') window.resetArticleForm();
       formSection.style.display = 'block';
       section.style.display = 'none';
       formSection.scrollIntoView({ behavior:'smooth', block:'start' });
     }
   });
 
-  // Bouton abandon dans dr-article-form.js — rappel : doit aussi utiliser 'block' pas 'flex'
-  // La correction est dans dr-article-form.js à la ligne : listSection.style.display = 'block'
-
-  /* ── Echap ── */
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
     ['al-pending-popup','al-edit-popup','al-edit-res-popup','al-new-res-standalone-popup'].forEach(id => {
