@@ -112,12 +112,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   /* ── À PROPOS ── */
   setHTML("#formateur-about", data.about_text);
-  /* Footer À propos : LinkedIn uniquement */
+  /* LinkedIn — sidebar uniquement, pas dans "À propos" */
   if (data.linkedin_url) {
-    const footer=$("#fp-about-footer"), ll=$("#formateur-linkedin");
-    if(footer) footer.style.display="flex";
-    if(ll) ll.href=data.linkedin_url;
-    /* Sidebar LinkedIn */
     const liCard=$("#fp-linkedin-card"),liLink=$("#fp-linkedin-link"),liVal=$("#fp-linkedin-val");
     if(liCard) liCard.style.display="block";
     if(liLink) liLink.href=data.linkedin_url;
