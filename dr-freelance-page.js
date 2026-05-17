@@ -76,6 +76,21 @@ document.addEventListener("DOMContentLoaded", async function () {
     }
   }
 
+  /* ── BADGE CATEGORY — Freelance / Agence ── */
+  const catBadge = document.getElementById('fp-category-badge');
+  if (catBadge && data.category) {
+    const cat = data.category.toLowerCase().trim();
+    if (cat === 'agence') {
+      catBadge.className = 'fp-cat-badge agence';
+      catBadge.innerHTML = '🏢 Agence';
+      catBadge.style.display = 'inline-flex';
+    } else if (cat === 'freelance') {
+      catBadge.className = 'fp-cat-badge freelance';
+      catBadge.innerHTML = '⚡ Freelance';
+      catBadge.style.display = 'inline-flex';
+    }
+  }
+
   /* ── NOM, DOMAINE, HEADLINE ── */
   setText("#formateur-display-name",     data.display_name);
   setText("#formateur-domaine-activity", data.domaine_activity ? `Domaine d'expertise ${data.domaine_activity}` : "");
