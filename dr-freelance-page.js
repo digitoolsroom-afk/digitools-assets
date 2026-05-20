@@ -49,8 +49,7 @@ document.addEventListener("DOMContentLoaded", async function () {
   const lineEl     = $("#fp-banner-line");
   if (bannerEl && data.banniere_image_url) {
     bannerEl.style.backgroundImage = `url('${data.banniere_image_url}')`;
-    /* Cache l'overlay gradient si image custom */
-    if (overlayEl) overlayEl.style.display = "none";
+    /* Overlay toujours visible pour lisibilité */
     if (lineEl)    lineEl.style.display    = "none";
   }
 
