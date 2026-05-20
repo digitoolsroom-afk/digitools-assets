@@ -209,6 +209,7 @@ document.addEventListener("DOMContentLoaded", async function () {
   } else if (hasCoaching&&hasFreelance) {
     if(tabsEl) {
       tabsEl.style.display="grid";
+      if(svcCard) svcCard.className="fp-svc active-consulting";
       tabsEl.innerHTML=`
         <button class="fp-svc-tab active-consulting" data-pane="tab-pane-coaching">🤝 Consulting</button>
         <button class="fp-svc-tab" data-pane="tab-pane-freelance">⚡ Freelance</button>`;
@@ -217,6 +218,7 @@ document.addEventListener("DOMContentLoaded", async function () {
           tabsEl.querySelectorAll(".fp-svc-tab").forEach(b=>{b.className="fp-svc-tab";});
           const isC=this.dataset.pane==="tab-pane-coaching";
           this.className="fp-svc-tab "+(isC?"active-consulting":"active-freelance");
+          if(svcCard){svcCard.className="fp-svc "+(isC?"active-consulting":"active-freelance");}
           [paneC,paneF].forEach(p=>p?.classList.remove("active"));
           document.getElementById(this.dataset.pane)?.classList.add("active");
         });
