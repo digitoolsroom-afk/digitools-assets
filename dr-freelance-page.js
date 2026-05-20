@@ -227,8 +227,10 @@ document.addEventListener("DOMContentLoaded", async function () {
     paneC?.classList.add("active"); paneF?.classList.remove("active");
   } else if (hasCoaching) {
     paneC?.classList.add("active"); if(paneF) paneF.style.display="none";
+    if(svcCard) svcCard.className="fp-svc active-consulting";
   } else {
     paneF?.classList.add("active"); if(paneC) paneC.style.display="none";
+    if(svcCard) svcCard.className="fp-svc active-freelance";
   }
 
   setHTML("#formateur-coaching-text",  data.text_coaching);
